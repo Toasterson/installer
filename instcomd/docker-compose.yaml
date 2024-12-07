@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: dev
+    volumes:
+      - pgdata:/var/lib/postgres
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:8.0-M02-bookworm
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata: {}

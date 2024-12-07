@@ -1,0 +1,12 @@
+[package]
+name = "machineconfig"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+knus = "3.2.0"
+thiserror = "2.0.4"
+miette = "7.4.0"
+
+[dev-dependencies]
+miette = { version = "7.4.0", features = ["fancy"] }
