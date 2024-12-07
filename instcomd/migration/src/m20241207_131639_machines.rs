@@ -47,7 +47,6 @@ enum Machines {
     Devices,
     UserId,
     StartDate,
-    
 }
 
 #[derive(DeriveIden)]

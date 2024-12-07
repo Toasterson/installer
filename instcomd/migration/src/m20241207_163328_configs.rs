@@ -51,7 +51,6 @@ enum Configs {
     UserId,
     MachineId,
     Data,
-    
 }
 
 #[derive(DeriveIden)]

@@ -1,4 +1,4 @@
 mod users;
 
-mod machines;
 mod configs;
+mod machines;

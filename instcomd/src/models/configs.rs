@@ -1,5 +1,5 @@
-use sea_orm::entity::prelude::*;
 use super::_entities::configs::{ActiveModel, Entity};
+use sea_orm::entity::prelude::*;
 pub type Configs = Entity;
 
 #[async_trait::async_trait]

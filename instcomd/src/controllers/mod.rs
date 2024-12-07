@@ -1,4 +1,4 @@
 pub mod auth;
 
-pub mod machine;
 pub mod config;
+pub mod machine;

@@ -1,9 +1,9 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
+use axum::debug_handler;
 use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
-use axum::debug_handler;
 
 use crate::models::_entities::configs::{ActiveModel, Entity, Model};
 
@@ -11,13 +11,13 @@ use crate::models::_entities::configs::{ActiveModel, Entity, Model};
 pub struct Params {
     pub pid: Uuid,
     pub data: serde_json::Value,
-    }
+}
 
 impl Params {
     fn update(&self, item: &mut ActiveModel) {
-      item.pid = Set(self.pid.clone());
-      item.data = Set(self.data.clone());
-      }
+        item.pid = Set(self.pid.clone());
+        item.data = Set(self.data.clone());
+    }
 }
 
 async fn load_item(ctx: &AppContext, id: i32) -> Result<Model> {
