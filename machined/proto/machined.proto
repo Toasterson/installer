@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package machined;
+
+message InfoRequest {
+
+}
+
+message InfoResponse {
+  string ip_address = 1;
+  string machinepass = 2;
+  string uuid = 3;
+}
+
+service MachineService {
+  rpc Info(InfoRequest) returns (InfoResponse);
+}
