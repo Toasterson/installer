@@ -1,0 +1,37 @@
+{
+  "dataset": {
+    "name": "ramdisk",
+    "input_snapshot": "image"
+  },
+
+  "steps": [
+    { "t": "remove_files", "dir": "/var/pkg", "without": "pkg" },
+
+    { "t": "remove_files", "dir": "/usr/xpg4" },
+    { "t": "remove_files", "dir": "/usr/include" },
+    { "t": "remove_files", "dir": "/usr/demo" },
+    { "t": "remove_files", "dir": "/usr/lib/help" },
+    { "t": "remove_files", "dir": "/usr/share/man" },
+    { "t": "remove_files", "dir": "/usr/share/doc" },
+    { "t": "remove_files", "dir": "/usr/share/bash-completion" },
+    { "t": "remove_files", "dir": "/usr/share/ipfilter/examples",
+      "without": "minimal" },
+
+    { "t": "remove_files", "dir": "/etc/net-snmp" },
+
+    { "t": "remove_files", "dir": "/usr/bin/i386" },
+    { "t": "remove_files", "dir": "/platform/i86xpv" },
+
+    { "t": "remove_files", "pattern": "*.a" },
+
+    { "t": "pack_tar",
+      "name": "${name}-ramdisk-boot.tar",
+      "include": [
+        "boot",
+        "platform/i86pc/kernel/amd64/unix"
+      ]
+    },
+
+    { "t": "pack_tar", "name": "${name}-ramdisk.tar" }
+  ]
+}
