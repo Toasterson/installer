@@ -1,6 +1,6 @@
 {
   "ufs": {
-    "size": 520,
+    "size": 1024,
     "inode_density": 4096
   },
 
@@ -27,9 +27,6 @@
       "src": "ntp.conf",
       "owner": "root", "group": "root", "mode": "644" },
 
-    { "t": "ensure_file", "file": "/usr/bin/install-helios",
-      "src": "install-helios.sh",
-      "owner": "root", "group": "bin", "mode": "0755" },
     { "t": "ensure_file", "file": "/usr/lib/bootparams",
       "src": "bootparams.sh",
       "owner": "root", "group": "bin", "mode": "0755" },
