@@ -69,6 +69,7 @@ for n in 01-strap 02-image 03-archive; do
         -d "$DATASET" \
         -g "installer" \
         -n "ramdisk-${n}" \
+        -F "name=installer" \
         "${ALL_ARGS[@]}" \
         "${ARGS[@]}"
 done
