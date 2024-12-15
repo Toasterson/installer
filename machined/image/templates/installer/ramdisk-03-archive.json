@@ -18,8 +18,6 @@
       "without": "minimal" },
 
     { "t": "remove_files", "dir": "/etc/net-snmp" },
-
-    { "t": "remove_files", "dir": "/usr/bin/i386" },
     { "t": "remove_files", "dir": "/platform/i86xpv" },
 
     { "t": "remove_files", "pattern": "*.a" },
