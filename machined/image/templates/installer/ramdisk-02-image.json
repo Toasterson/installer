@@ -86,18 +86,13 @@
     ] },
 
     { "t": "pkg_install", "pkgs": [
-      "/system/library/gcc-runtime",
-      "/system/library/g++-runtime",
       "/developer/linker",
       "/diagnostic/diskinfo",
       "/diagnostic/pci",
       "/system/data/hardware-registry",
       "/system/extended-system-utilities",
-      "/system/data/urxvt-terminfo",
       "/system/network/routing",
       "/compress/gzip",
-      "/terminal/resize",
-      "/web/ca-bundle",
       "/service/network/chrony"
     ] },
 
