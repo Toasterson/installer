@@ -61,10 +61,10 @@ NAMEARGS=()
 if [[ $ONU == yes ]]; then
 	NAMEARGS+=(  )
 fi
-pfexec "$TOP/image-builder/target/release/image-builder" \
+pfexec image-builder \
     build \
     -d "$DATASET" \
-    -g iso \
+    -g installer \
     -n "eltorito-efi" \
     -T "$TOP/templates" \
     -N "eltorito-efi" \
@@ -74,16 +74,4 @@ pfexec "$TOP/image-builder/target/release/image-builder" \
 #
 # Build the ISO itself:
 #
-NAMEARGS=( '-N' "$EXTRA$OUTNAME-$SERIAL" )
-pfexec "$TOP/image-builder/target/release/image-builder" \
-    build \
-    -d "$DATASET" \
-    -g helios \
-    -n "$MACHINE-$VARIANT" \
-    -T "$TOP/templates" \
-    "${NAMEARGS[@]}" \
-    "${ARGS[@]}"
 
-ls -lh \
-    "$MOUNTPOINT/output/helios-${EXTRA}eltorito-efi.pcfs" \
-    "$MOUNTPOINT/output/helios-$EXTRA$OUTNAME-$SERIAL.iso"
