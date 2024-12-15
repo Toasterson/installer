@@ -17,7 +17,7 @@ if [[ -f "$TOP/etc/config.sh" ]]; then
 	fi
 fi
 
-export PATH="$PATH:/export/home/vagrant/.cargo/bin"
+export PATH="$PATH:$HOME/.cargo/bin"
 
 #
 # Get mountpoint based on the top-level dataset for image construction:
