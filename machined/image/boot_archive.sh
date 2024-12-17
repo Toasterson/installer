@@ -25,6 +25,6 @@ pfexec image-builder \
     -g installer \
     -n "generic-ttya-ufs" \
     -T "$TOP/templates" \
-    -N "installer" \
+    -N "generic-ttya-ufs" \
     "${NAMEARGS[@]}" \
     "${ARGS[@]}"
