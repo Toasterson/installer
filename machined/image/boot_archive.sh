@@ -16,15 +16,7 @@ SERIAL=${SERIAL:-ttya}
 
 UFS=install
 NAME=installer
-ISO_TYPE=
 CONSOLE=$SERIAL
-
-if [[ $SERIAL == vga ]]; then
-	ISO_TYPE='Framebuffer Installer'
-	CONSOLE=text
-else
-	ISO_TYPE="Serial ($SERIAL) Installer"
-fi
 
 while getopts ':N' c; do
 	case "$c" in
@@ -54,13 +46,8 @@ pfexec image-builder \
     build \
     -d "$DATASET" \
     -g installer \
-    -n "eltorito-efi" \
+    -n "generic-ttya-ufs" \
     -T "$TOP/templates" \
-    -N "eltorito-efi" \
+    -N "installer" \
     "${NAMEARGS[@]}" \
     "${ARGS[@]}"
-
-#
-# Build the ISO itself:
-#
-
