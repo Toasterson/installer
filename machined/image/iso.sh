@@ -64,3 +64,12 @@ pfexec image-builder \
 # Build the ISO itself:
 #
 
+pfexec image-builder \
+    build \
+    -d "$DATASET" \
+    -g installer \
+    -n "qemu-ttya-iso" \
+    -T "$TOP/templates" \
+    -N "installer" \
+    "${NAMEARGS[@]}" \
+    "${ARGS[@]}"
