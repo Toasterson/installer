@@ -2,16 +2,35 @@ syntax = "proto3";
 
 package machined;
 
-message InfoRequest {
-
+message ClaimRequest {
+  string claim_key = 1;
 }
 
-message InfoResponse {
-  string ip_address = 1;
-  string machinepass = 2;
-  string uuid = 3;
+message ClaimResponse {
+  string claim_token = 1;
+}
+
+message InstallConfig {
+  string claim_token = 1;
+  string machineconfig = 2;
+}
+
+enum ProgressLevel {
+  DEBUG = 0;
+  INFO = 1;
+  WARNING = 2;
+  ERROR = 3;
+}
+
+message InstallProgress {
+  ProgressLevel level = 1;
+  oneof message {
+    string info = 2;
+    string error = 3;
+  }
 }
 
 service MachineService {
-  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc Claim(ClaimRequest) returns (ClaimResponse);
+  rpc Install(InstallConfig) returns (stream InstallProgress);
 }
