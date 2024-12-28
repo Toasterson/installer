@@ -3,14 +3,15 @@ mod devprop;
 mod process;
 mod config;
 
+use std::sync::Arc;
 use miette::IntoDiagnostic;
 use tonic::{Request, Response, Status};
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Server;
-use tracing::info;
+use tracing::{debug, info};
 use tracing_subscriber;
 use machined::machine_service_server::MachineService;
-use crate::config::load_config;
+use crate::config::{load_config, MachinedConfig};
 use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
 use crate::machined::machine_service_server::MachineServiceServer;
 use passwords::PasswordGenerator;
@@ -18,7 +19,7 @@ use passwords::PasswordGenerator;
 
 #[derive(Debug, Default)]
 struct Svc {
-    claim_key: String,
+    config: Arc<MachinedConfig>,
 }
 
 #[tonic::async_trait]
@@ -56,24 +57,13 @@ async fn main() -> miette::Result<()> {
         }
     }
 
-    let pg = PasswordGenerator::new()
-        .length(8)
-        .lowercase_letters(true)
-        .uppercase_letters(true)
-        .exclude_similar_characters(true)
-        .spaces(false)
-        .numbers(true)
-        .symbols(false)
-        .strict(false);
-
-    let claim_key = pg.generate_one().into_diagnostic()?;
-    info!("claim this installer with the key {}", &claim_key);
+    info!("claim this installer with the password {}", &cfg.claim_password);
 
     // Now we listen for requests to claim the server from a
     info!("starting server on {}", &cfg.listen);
     let addr = cfg.listen.parse().into_diagnostic()?;
     let machined = Svc {
-        claim_key
+        config: Arc::new(cfg),
     };
 
     Server::builder()
