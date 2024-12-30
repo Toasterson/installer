@@ -3,7 +3,10 @@ syntax = "proto3";
 package machined;
 
 message ClaimRequest {
-  string claim_key = 1;
+  oneof claim_secret {
+    string claim_password = 1;
+    string claim_payload = 2;
+  }
 }
 
 message ClaimResponse {

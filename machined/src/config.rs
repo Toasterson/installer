@@ -1,7 +1,7 @@
 use config::File;
-use serde::Deserialize;
-use miette::{IntoDiagnostic, Result};
+use miette::{miette, IntoDiagnostic, Result};
 use passwords::PasswordGenerator;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct MachinedConfig {
@@ -42,7 +42,9 @@ pub fn load_config() -> Result<MachinedConfig> {
         .symbols(false)
         .strict(false);
 
-    let claim_password = pg.generate_one().into_diagnostic()?;
+    let claim_password = pg
+        .generate_one()
+        .map_err(|e| miette!("error generating password {e}"))?;
 
     let cfg = config::Config::builder()
         // In the installer the defaults get backed in under /etc so we read them first
