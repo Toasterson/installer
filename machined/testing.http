@@ -1,0 +1,5 @@
+GRPC ip6-localhost:50051/machined.MachineService/Claim
+
+{
+  "claim_password": "JY9Av7dF"
+}
