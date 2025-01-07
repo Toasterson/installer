@@ -1,11 +1,17 @@
 mod machined;
+mod platform;
+
+mod config;
 mod devprop;
 mod process;
-mod config;
+mod util;
 
+use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::mpsc::SendError;
 use base64::Engine;
 use jwt_simple::prelude::*;
+use machineconfig::MachineConfig;
 use miette::IntoDiagnostic;
 use tonic::{Request, Response, Status};
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
@@ -17,7 +23,13 @@ use crate::config::{load_config, MachinedConfig};
 use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
 use crate::machined::machine_service_server::MachineServiceServer;
 use passwords::PasswordGenerator;
+use tokio::sync::mpsc;
+use tonic::codegen::tokio_stream;
+use tonic::codegen::tokio_stream::Stream;
 use crate::machined::claim_request::ClaimSecret;
+use crate::platform::Error;
+
+type ResponseStream = Pin<Box<dyn Stream<Item = Result<InstallProgress, Status>> + Send>>;
 
 #[derive(Debug, Default)]
 struct Svc {
@@ -55,10 +67,21 @@ impl MachineService for Svc {
         }
     }
 
-    type InstallStream = ReceiverStream<Result<InstallProgress, Status>>;
+    type InstallStream = ResponseStream;
 
-    async fn install(&self, _request: Request<InstallConfig>) -> Result<Response<Self::InstallStream>, Status> {
-        todo!()
+    async fn install(&self, request: Request<InstallConfig>) -> Result<Response<Self::InstallStream>, Status> {
+        let config = request.into_inner();
+        let (tx, rc) = mpsc::channel(1);
+        let mc: MachineConfig = knus::parse("install_config", &config.machineconfig).map_err(|e| Status::invalid_argument(e.to_string()))?;
+        tokio::spawn(async move {
+            match platform::install_system(&mc, tx) {
+                Ok(_) => {}
+                Err(_) => {}
+            }
+        });
+
+        let output_stream = ReceiverStream::new(rc);
+        Ok(Response::new(Box::pin(output_stream)))
     }
 }
 
