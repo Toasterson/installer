@@ -8,7 +8,6 @@ mod util;
 
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::mpsc::SendError;
 use base64::Engine;
 use jwt_simple::prelude::*;
 use machineconfig::MachineConfig;
@@ -16,20 +15,18 @@ use miette::IntoDiagnostic;
 use tonic::{Request, Response, Status};
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::transport::Server;
-use tracing::{debug, info};
+use tracing::{info};
 use tracing_subscriber;
 use machined::machine_service_server::MachineService;
 use crate::config::{load_config, MachinedConfig};
 use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
 use crate::machined::machine_service_server::MachineServiceServer;
-use passwords::PasswordGenerator;
 use tokio::sync::mpsc;
-use tonic::codegen::tokio_stream;
 use tonic::codegen::tokio_stream::Stream;
 use crate::machined::claim_request::ClaimSecret;
-use crate::platform::Error;
 
-type ResponseStream = Pin<Box<dyn Stream<Item = Result<InstallProgress, Status>> + Send>>;
+type ProgressMessage = Result<InstallProgress, Status>;
+type ResponseStream = Pin<Box<dyn Stream<Item = ProgressMessage> + Send>>;
 
 #[derive(Debug, Default)]
 struct Svc {
@@ -50,7 +47,7 @@ impl MachineService for Svc {
 
                         let claims = Claims::create(Duration::from_hours(2));
                         let claim_token = key.authenticate(claims)
-                            .map_err(|e| Status::permission_denied("wrong claims"))?;
+                            .map_err(|_| Status::permission_denied("wrong claims"))?;
                         Ok(Response::new(ClaimResponse{
                             claim_token,
                         }))
@@ -70,18 +67,27 @@ impl MachineService for Svc {
     type InstallStream = ResponseStream;
 
     async fn install(&self, request: Request<InstallConfig>) -> Result<Response<Self::InstallStream>, Status> {
-        let config = request.into_inner();
-        let (tx, rc) = mpsc::channel(1);
-        let mc: MachineConfig = knus::parse("install_config", &config.machineconfig).map_err(|e| Status::invalid_argument(e.to_string()))?;
-        tokio::spawn(async move {
-            match platform::install_system(&mc, tx) {
-                Ok(_) => {}
-                Err(_) => {}
-            }
-        });
+        let key = HS256Key::from_bytes(&self.private_key_bytes);
+        if let Some(auth_header) = request.metadata().get("Authorization") {
+            let header_token_str = auth_header.to_str()
+                .map_err(|_| Status::permission_denied("bad token"))?;
+            let _ = key.verify_token::<NoCustomClaims>(header_token_str, None)
+                .map_err(|_| Status::permission_denied("token verification failed"))?;
+            let config = request.into_inner();
+            let (tx, rc) = mpsc::channel(1);
+            let mc: MachineConfig = knus::parse("install_config", &config.machineconfig).map_err(|e| Status::invalid_argument(e.to_string()))?;
+            tokio::spawn(async move {
+                match platform::install_system(&mc, tx).await {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
+            });
 
-        let output_stream = ReceiverStream::new(rc);
-        Ok(Response::new(Box::pin(output_stream)))
+            let output_stream = ReceiverStream::new(rc);
+            Ok(Response::new(Box::pin(output_stream)))
+        } else {
+            Err(Status::not_found("Missing authorization header"))
+        }
     }
 }
 
