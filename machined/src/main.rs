@@ -6,24 +6,24 @@ mod devprop;
 mod process;
 mod util;
 
-use std::pin::Pin;
-use std::sync::Arc;
+use crate::config::{load_config, MachinedConfig};
+use crate::machined::claim_request::ClaimSecret;
+use crate::machined::machine_service_server::MachineServiceServer;
+use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
 use base64::Engine;
 use jwt_simple::prelude::*;
 use machineconfig::MachineConfig;
-use miette::IntoDiagnostic;
-use tonic::{Request, Response, Status};
-use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
-use tonic::transport::Server;
-use tracing::{info};
-use tracing_subscriber;
 use machined::machine_service_server::MachineService;
-use crate::config::{load_config, MachinedConfig};
-use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
-use crate::machined::machine_service_server::MachineServiceServer;
+use miette::IntoDiagnostic;
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::mpsc;
+use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::codegen::tokio_stream::Stream;
-use crate::machined::claim_request::ClaimSecret;
+use tonic::transport::Server;
+use tonic::{Request, Response, Status};
+use tracing::info;
+use tracing_subscriber;
 
 type ProgressMessage = Result<InstallProgress, Status>;
 type ResponseStream = Pin<Box<dyn Stream<Item = ProgressMessage> + Send>>;
@@ -36,7 +36,10 @@ struct Svc {
 
 #[tonic::async_trait]
 impl MachineService for Svc {
-    async fn claim(&self, request: Request<ClaimRequest>) -> Result<Response<ClaimResponse>, Status> {
+    async fn claim(
+        &self,
+        request: Request<ClaimRequest>,
+    ) -> Result<Response<ClaimResponse>, Status> {
         // first we check the password with the local configuration
         let claim_request = request.into_inner();
         if let Some(secret) = claim_request.claim_secret {
@@ -46,11 +49,10 @@ impl MachineService for Svc {
                         let key = HS256Key::from_bytes(&self.private_key_bytes);
 
                         let claims = Claims::create(Duration::from_hours(2));
-                        let claim_token = key.authenticate(claims)
+                        let claim_token = key
+                            .authenticate(claims)
                             .map_err(|_| Status::permission_denied("wrong claims"))?;
-                        Ok(Response::new(ClaimResponse{
-                            claim_token,
-                        }))
+                        Ok(Response::new(ClaimResponse { claim_token }))
                     } else {
                         Err(Status::permission_denied("wrong password"))
                     }
@@ -66,16 +68,22 @@ impl MachineService for Svc {
 
     type InstallStream = ResponseStream;
 
-    async fn install(&self, request: Request<InstallConfig>) -> Result<Response<Self::InstallStream>, Status> {
+    async fn install(
+        &self,
+        request: Request<InstallConfig>,
+    ) -> Result<Response<Self::InstallStream>, Status> {
         let key = HS256Key::from_bytes(&self.private_key_bytes);
         if let Some(auth_header) = request.metadata().get("Authorization") {
-            let header_token_str = auth_header.to_str()
+            let header_token_str = auth_header
+                .to_str()
                 .map_err(|_| Status::permission_denied("bad token"))?;
-            let _ = key.verify_token::<NoCustomClaims>(header_token_str, None)
+            let _ = key
+                .verify_token::<NoCustomClaims>(header_token_str, None)
                 .map_err(|_| Status::permission_denied("token verification failed"))?;
             let config = request.into_inner();
             let (tx, rc) = mpsc::channel(1);
-            let mc: MachineConfig = knus::parse("install_config", &config.machineconfig).map_err(|e| Status::invalid_argument(e.to_string()))?;
+            let mc: MachineConfig = knus::parse("install_config", &config.machineconfig)
+                .map_err(|e| Status::invalid_argument(e.to_string()))?;
             tokio::spawn(async move {
                 match platform::install_system(&mc, tx).await {
                     Ok(_) => {}
@@ -105,20 +113,21 @@ async fn main() -> miette::Result<()> {
         match ifaddr.address {
             Some(address) => {
                 if !ifaddr.interface_name.starts_with("lo") {
-                    info!("interface {} address {}",
-                             ifaddr.interface_name, address);
+                    info!("interface {} address {}", ifaddr.interface_name, address);
                 }
-            },
+            }
             _ => {}
         }
     }
 
-    info!("claim this installer with the password {}", &cfg.claim_password);
+    info!(
+        "claim this installer with the password {}",
+        &cfg.claim_password
+    );
     let key = if let Some(claim_secret) = &cfg.claim_key {
-        let key =
-            base64::prelude::BASE64_STANDARD
-                .decode(&claim_secret.private_key)
-                .into_diagnostic()?;
+        let key = base64::prelude::BASE64_STANDARD
+            .decode(&claim_secret.private_key)
+            .into_diagnostic()?;
         key
     } else {
         HS256Key::generate().to_bytes()

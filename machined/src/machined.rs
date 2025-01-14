@@ -82,10 +82,10 @@ pub mod machine_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
-    use tonic::codegen::*;
     use tonic::codegen::http::Uri;
+    use tonic::codegen::*;
     #[derive(Debug, Clone)]
     pub struct MachineServiceClient<T> {
         inner: tonic::client::Grpc<T>,
@@ -129,9 +129,8 @@ pub mod machine_service_client {
                     <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
                 >,
             >,
-            <T as tonic::codegen::Service<
-                http::Request<tonic::body::BoxBody>,
-            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+            <T as tonic::codegen::Service<http::Request<tonic::body::BoxBody>>>::Error:
+                Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             MachineServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -170,18 +169,11 @@ pub mod machine_service_client {
             &mut self,
             request: impl tonic::IntoRequest<super::ClaimRequest>,
         ) -> std::result::Result<tonic::Response<super::ClaimResponse>, tonic::Status> {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/machined.MachineService/Claim",
-            );
+            let path = http::uri::PathAndQuery::from_static("/machined.MachineService/Claim");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("machined.MachineService", "Claim"));
@@ -194,18 +186,11 @@ pub mod machine_service_client {
             tonic::Response<tonic::codec::Streaming<super::InstallProgress>>,
             tonic::Status,
         > {
-            self.inner
-                .ready()
-                .await
-                .map_err(|e| {
-                    tonic::Status::unknown(
-                        format!("Service was not ready: {}", e.into()),
-                    )
-                })?;
+            self.inner.ready().await.map_err(|e| {
+                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
+            })?;
             let codec = tonic::codec::ProstCodec::default();
-            let path = http::uri::PathAndQuery::from_static(
-                "/machined.MachineService/Install",
-            );
+            let path = http::uri::PathAndQuery::from_static("/machined.MachineService/Install");
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("machined.MachineService", "Install"));
@@ -220,7 +205,7 @@ pub mod machine_service_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value,
+        clippy::let_unit_value
     )]
     use tonic::codegen::*;
     /// Generated trait containing gRPC methods that should be implemented for use with MachineServiceServer.
@@ -233,8 +218,7 @@ pub mod machine_service_server {
         /// Server streaming response type for the Install method.
         type InstallStream: tonic::codegen::tokio_stream::Stream<
                 Item = std::result::Result<super::InstallProgress, tonic::Status>,
-            >
-            + std::marker::Send
+            > + std::marker::Send
             + 'static;
         async fn install(
             &self,
@@ -262,10 +246,7 @@ pub mod machine_service_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(
-            inner: T,
-            interceptor: F,
-        ) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -320,22 +301,16 @@ pub mod machine_service_server {
                 "/machined.MachineService/Claim" => {
                     #[allow(non_camel_case_types)]
                     struct ClaimSvc<T: MachineService>(pub Arc<T>);
-                    impl<
-                        T: MachineService,
-                    > tonic::server::UnaryService<super::ClaimRequest> for ClaimSvc<T> {
+                    impl<T: MachineService> tonic::server::UnaryService<super::ClaimRequest> for ClaimSvc<T> {
                         type Response = super::ClaimResponse;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::Response>,
-                            tonic::Status,
-                        >;
+                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::ClaimRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut = async move {
-                                <T as MachineService>::claim(&inner, request).await
-                            };
+                            let fut =
+                                async move { <T as MachineService>::claim(&inner, request).await };
                             Box::pin(fut)
                         }
                     }
@@ -364,16 +339,14 @@ pub mod machine_service_server {
                 "/machined.MachineService/Install" => {
                     #[allow(non_camel_case_types)]
                     struct InstallSvc<T: MachineService>(pub Arc<T>);
-                    impl<
-                        T: MachineService,
-                    > tonic::server::ServerStreamingService<super::InstallConfig>
-                    for InstallSvc<T> {
+                    impl<T: MachineService>
+                        tonic::server::ServerStreamingService<super::InstallConfig>
+                        for InstallSvc<T>
+                    {
                         type Response = super::InstallProgress;
                         type ResponseStream = T::InstallStream;
-                        type Future = BoxFuture<
-                            tonic::Response<Self::ResponseStream>,
-                            tonic::Status,
-                        >;
+                        type Future =
+                            BoxFuture<tonic::Response<Self::ResponseStream>, tonic::Status>;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::InstallConfig>,
@@ -407,23 +380,19 @@ pub mod machine_service_server {
                     };
                     Box::pin(fut)
                 }
-                _ => {
-                    Box::pin(async move {
-                        let mut response = http::Response::new(empty_body());
-                        let headers = response.headers_mut();
-                        headers
-                            .insert(
-                                tonic::Status::GRPC_STATUS,
-                                (tonic::Code::Unimplemented as i32).into(),
-                            );
-                        headers
-                            .insert(
-                                http::header::CONTENT_TYPE,
-                                tonic::metadata::GRPC_CONTENT_TYPE,
-                            );
-                        Ok(response)
-                    })
-                }
+                _ => Box::pin(async move {
+                    let mut response = http::Response::new(empty_body());
+                    let headers = response.headers_mut();
+                    headers.insert(
+                        tonic::Status::GRPC_STATUS,
+                        (tonic::Code::Unimplemented as i32).into(),
+                    );
+                    headers.insert(
+                        http::header::CONTENT_TYPE,
+                        tonic::metadata::GRPC_CONTENT_TYPE,
+                    );
+                    Ok(response)
+                }),
             }
         }
     }

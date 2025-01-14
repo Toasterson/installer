@@ -1,11 +1,8 @@
+use miette::{miette, IntoDiagnostic, Result};
 use std::process::{Command, Stdio};
 use tracing::debug;
-use miette::{miette, IntoDiagnostic, Result};
 
-pub fn run_capture_stdout<S: AsRef<str>>(
-    args: &[S],
-    env: Option<&[(S, S)]>,
-) -> Result<String> {
+pub fn run_capture_stdout<S: AsRef<str>>(args: &[S], env: Option<&[(S, S)]>) -> Result<String> {
     let args: Vec<&str> = args.iter().map(|s| s.as_ref()).collect();
     let env = build_env(env);
     let mut cmd = build_cmd(args.clone(), env);
@@ -26,12 +23,9 @@ pub fn run_capture_stdout<S: AsRef<str>>(
     }
 }
 
-fn build_env<S: AsRef<str>>(
-    env: Option<&[(S, S)]>,
-) -> Option<Vec<(&str, &str)>> {
+fn build_env<S: AsRef<str>>(env: Option<&[(S, S)]>) -> Option<Vec<(&str, &str)>> {
     if let Some(env) = env {
-        let env: Vec<(&str, &str)> =
-            env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
+        let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (k.as_ref(), v.as_ref())).collect();
         Some(env)
     } else {
         None

@@ -52,8 +52,11 @@ pub fn load_config() -> Result<MachinedConfig> {
         .add_source(File::with_name("/etc/machined").required(false))
         // We assume that the first USB key gets mounted on /usb so we look for a machined config there
         .add_source(File::with_name("/usb/machined").required(false))
-        .set_default("listen", "[::1]:50051").into_diagnostic()?
-        .set_default("claim_password", claim_password).into_diagnostic()?
-        .build().into_diagnostic()?;
+        .set_default("listen", "[::1]:50051")
+        .into_diagnostic()?
+        .set_default("claim_password", claim_password)
+        .into_diagnostic()?
+        .build()
+        .into_diagnostic()?;
     Ok(cfg.try_deserialize().into_diagnostic()?)
 }
