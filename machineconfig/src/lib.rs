@@ -78,7 +78,7 @@ pub struct VDev {
     pub disks: Vec<String>,
 }
 
-#[derive(knus::DecodeScalar, Debug, Default)]
+#[derive(knus::DecodeScalar, Debug, Default, strum::Display)]
 pub enum VDevType {
     #[default]
     Mirror,

@@ -1,5 +1,13 @@
 GRPC ip6-localhost:50051/machined.MachineService/Claim
 
 {
-  "claim_password": "JY9Av7dF"
+  "claim_password": "bWnKy4kH"
+}
+
+### GET request with parameter
+GRPC ip6-localhost:50051/machined.MachineService/Install
+Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE3MzY4NjAzNTQsImV4cCI6MTczNjg2NzU1NCwibmJmIjoxNzM2ODYwMzU0fQ.wafAFYZMXglCnHvzq7J5uwZRzTEovbYjNlsJx9IQuys
+
+{
+  "machineconfig": "pool \"rpool\" compression=\"zstd\" { vdev \"mirror\" { disks \"c5t0d0\" \"c6t0d0\"; }; }; image \"oci://aopc.cloud/openindiana/hipster:2024.12\"; hostname \"node01\"; nameserver \"9.9.9.9\"; nameserver \"149.112.112.112\"; interface \"net0\" selector=\"mac:00:00:00\" { };"
 }
