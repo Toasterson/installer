@@ -1,7 +1,10 @@
 
-pool "rpool" compression="zstd" {
+pool "rpool" {
     vdev "mirror" {
         disks "c5t0d0" "c6t0d0"
+    }
+    options {
+        compression "zstd"
     }
 }
 

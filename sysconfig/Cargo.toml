@@ -1,5 +1,5 @@
 [package]
-name = "machineconfig"
+name = "sysconfig"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,6 @@ knus = "3.2.0"
 thiserror = "2.0.4"
 miette = "7.4.0"
 strum = { version = "0.26.3", features = ["derive"] }
-sysconfig = { version = "*", path = "../sysconfig" }
 
 [dev-dependencies]
 miette = { version = "7.4.0", features = ["fancy"] }
