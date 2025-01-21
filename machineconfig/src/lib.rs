@@ -19,6 +19,7 @@ mod tests {
 }
 
 use miette::Diagnostic;
+use std::fmt::Display;
 use sysconfig::SysConfig;
 use thiserror::Error;
 
@@ -39,9 +40,9 @@ pub struct MachineConfig {
 
     #[knus(child, unwrap(argument))]
     pub image: String,
-    
+
     #[knus(child)]
-    pub sysconfig: SysConfig
+    pub sysconfig: SysConfig,
 }
 
 #[derive(Debug, knus::Decode, Default)]
@@ -62,6 +63,12 @@ pub struct PoolOption {
     name: String,
     #[knus(argument)]
     value: String,
+}
+
+impl Display for PoolOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "\"{}: {}\"", self.name, self.value)
+    }
 }
 
 #[derive(Debug, knus::Decode, Default)]

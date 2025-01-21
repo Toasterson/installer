@@ -3,6 +3,7 @@ mod platform;
 
 mod config;
 mod devprop;
+mod error;
 mod process;
 mod util;
 
