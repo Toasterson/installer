@@ -30,4 +30,26 @@ pub struct Interface {
 
     #[knus(property)]
     pub selector: Option<String>,
+
+    #[knus(children(name = "address"))]
+    pub addresses: Vec<AddressObject>,
+}
+
+#[derive(Debug, knus::Decode, Default)]
+pub struct AddressObject {
+    #[knus(property)]
+    pub name: String,
+    #[knus(property)]
+    pub kind: AddressKind,
+    #[knus(argument)]
+    pub address: Option<String>,
+}
+
+#[derive(knus::DecodeScalar, Debug, Default, strum::Display)]
+pub enum AddressKind {
+    #[default]
+    Dhcp4,
+    Dhcp6,
+    Addrconf,
+    Static,
 }

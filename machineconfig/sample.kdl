@@ -14,7 +14,13 @@ sysconfig {
     hostname "node01"
     nameserver "9.9.9.9"
     nameserver "149.112.112.112"
-    interface "net0" selector="mac:00:00:00" {
-
+    interface "net0" selector="mac:00:00:00:00" {
+        address name="v4" kind="static" "192.168.1.200/24"
+        address name="v6" kind="static" "fe80:01::1/64"
+    }
+    interface "net1" selector="mac:00:00:00:01" {
+        address name="v4" kind="dhcp4"
+        address name="v6" kind="dhcp6"
+        address name="addrconf" kind="addrconf"
     }
 }
