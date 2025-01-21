@@ -10,11 +10,11 @@ pool "rpool" {
 
 image "oci://aopc.cloud/openindiana/hipster:2024.12"
 
-hostname "node01"
+sysconfig {
+    hostname "node01"
+    nameserver "9.9.9.9"
+    nameserver "149.112.112.112"
+    interface "net0" selector="mac:00:00:00" {
 
-nameserver "9.9.9.9"
-nameserver "149.112.112.112"
-
-interface "net0" selector="mac:00:00:00" {
-
+    }
 }

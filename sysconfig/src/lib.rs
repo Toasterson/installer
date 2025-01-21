@@ -13,5 +13,21 @@ pub fn parse_config(path: &str, content: &str) -> Result<SysConfig, Error> {
 
 #[derive(Debug, knus::Decode, Default)]
 pub struct SysConfig {
+    #[knus(child, unwrap(argument))]
+    pub hostname: String,
 
+    #[knus(children(name = "nameserver"), unwrap(argument))]
+    pub nameservers: Vec<String>,
+
+    #[knus(children(name = "interface"))]
+    pub interfaces: Vec<Interface>,
+}
+
+#[derive(Debug, knus::Decode, Default)]
+pub struct Interface {
+    #[knus(argument)]
+    pub name: Option<String>,
+
+    #[knus(property)]
+    pub selector: Option<String>,
 }

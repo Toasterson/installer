@@ -8,9 +8,9 @@ mod tests {
     fn it_works() -> miette::Result<()> {
         let sample_string = fs::read_to_string("sample.kdl").into_diagnostic()?;
         let cfg = crate::parse_config("sample.kdl", &sample_string).unwrap();
-        assert_eq!(cfg.hostname, "node01");
-        assert_eq!(cfg.nameservers.len(), 2);
-        assert_eq!(cfg.nameservers[0], String::from("9.9.9.9"));
+        assert_eq!(cfg.sysconfig.hostname, "node01");
+        assert_eq!(cfg.sysconfig.nameservers.len(), 2);
+        assert_eq!(cfg.sysconfig.nameservers[0], String::from("9.9.9.9"));
         assert_eq!(cfg.pools[0].name, "rpool");
         assert_eq!(cfg.pools[0].options[0].name, "compression");
         assert_eq!(cfg.pools[0].options[0].value, "zstd");
@@ -39,27 +39,9 @@ pub struct MachineConfig {
 
     #[knus(child, unwrap(argument))]
     pub image: String,
-
-    #[knus(child, unwrap(argument))]
-    pub hostname: String,
-
-    #[knus(children(name = "nameserver"), unwrap(argument))]
-    pub nameservers: Vec<String>,
-
-    #[knus(children(name = "interface"))]
-    pub interfaces: Vec<Interface>,
     
-    #[knus(flatten(child))]
-    pub sys_config: SysConfig
-}
-
-#[derive(Debug, knus::Decode, Default)]
-pub struct Interface {
-    #[knus(argument)]
-    pub name: Option<String>,
-
-    #[knus(property)]
-    pub selector: Option<String>,
+    #[knus(child)]
+    pub sysconfig: SysConfig
 }
 
 #[derive(Debug, knus::Decode, Default)]
