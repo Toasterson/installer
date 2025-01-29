@@ -21,8 +21,6 @@ pub struct ClaimResponse {
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InstallConfig {
-    #[prost(string, tag = "1")]
-    pub claim_token: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
     pub machineconfig: ::prost::alloc::string::String,
 }
