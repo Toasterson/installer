@@ -10,6 +10,12 @@ pub struct MachinedConfig {
     pub claim_key: Option<ClaimKey>,
     pub claim_password: String,
     pub wireguard: Option<WireguardConfig>,
+    #[serde(default = "default_oci_registry")]
+    pub default_oci_registry: String,
+}
+
+fn default_oci_registry() -> String {
+    "aopc.cloud".to_string()
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]

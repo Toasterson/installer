@@ -1,6 +1,7 @@
 use crate::machined::install_progress::Message;
 use crate::machined::{InstallProgress, ProgressLevel};
 use crate::ProgressMessage;
+use std::error::Error;
 
 pub fn report_install_info(msg: &str) -> ProgressMessage {
     Ok(InstallProgress {
@@ -16,10 +17,10 @@ pub fn report_install_warning(msg: &str) -> ProgressMessage {
     })
 }
 
-pub fn report_install_error(msg: &str) -> ProgressMessage {
+pub fn report_install_error<E: Error>(err: E) -> ProgressMessage {
     Ok(InstallProgress {
         level: ProgressLevel::Error.into(),
-        message: Some(Message::Error(msg.into())),
+        message: Some(Message::Error(err.to_string())),
     })
 }
 

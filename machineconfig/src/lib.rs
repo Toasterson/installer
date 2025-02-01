@@ -60,9 +60,9 @@ pub struct Pool {
 #[derive(Debug, knus::Decode, Default)]
 pub struct PoolOption {
     #[knus(node_name)]
-    name: String,
+    pub name: String,
     #[knus(argument)]
-    value: String,
+    pub value: String,
 }
 
 impl Display for PoolOption {

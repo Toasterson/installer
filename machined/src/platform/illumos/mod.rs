@@ -27,12 +27,30 @@ pub fn install_system(
                 .await?;
             }
             Err(e) => {
-                tx.send(report_install_error(
-                    format!("Pool {} could not be created: {}", &pool.name, e).as_str(),
-                ))
-                .await?;
+                tx.send(report_install_error(e)).await?;
                 return Err(e);
             }
+        }
+    }
+
+    match create_boot_environment_base_dataset() {
+        Ok(_) => {
+            tx.send(report_install_debug("base root Dataset created"))
+                .await?;
+        }
+        Err(e) => {
+            tx.send(report_install_error(e)).await?;
+            return Err(e);
+        }
+    }
+
+    match fetch_image(&mc.image) {
+        Ok(_) => {
+            tx.send(report_install_debug("image fetched")).await?;
+        }
+        Err(e) => {
+            tx.send(report_install_error(e)).await?;
+            return Err(e);
         }
     }
     Ok(())
