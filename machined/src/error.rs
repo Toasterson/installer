@@ -12,4 +12,8 @@ pub enum InstallationError {
     BaseRootDSCreateFailed(String),
     #[error("requested installation image does not exist")]
     NoManifestFound,
+    #[error("requested image does not support {0}")]
+    NoManifestMatchesArch(String),
+    #[error("cache base directory does not exist")]
+    BaseDirDoesNotExist,
 }
