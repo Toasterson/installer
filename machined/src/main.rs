@@ -85,8 +85,9 @@ impl MachineService for Svc {
             let (tx, rc) = mpsc::channel(1);
             let mc: MachineConfig = knus::parse("install_config", &config.machineconfig)
                 .map_err(|e| Status::invalid_argument(e.to_string()))?;
+            let cfg = self.config.clone();
             tokio::spawn(async move {
-                match platform::install_system(&mc, tx).await {
+                match platform::install_system(&mc, cfg.clone(), tx).await {
                     Ok(_) => {}
                     Err(_) => {}
                 }

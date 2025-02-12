@@ -1,13 +1,17 @@
+use crate::config::MachinedConfig;
+use crate::machined::InstallProgress;
 use crate::util::report_install_debug;
-use crate::ProgressMessage;
+use crate::Arc;
 use machineconfig::MachineConfig;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
+use tonic::Status;
 
 pub async fn install_system(
     mc: &MachineConfig,
-    tx: Sender<ProgressMessage>,
-) -> Result<(), SendError<ProgressMessage>> {
+    _config: Arc<MachinedConfig>,
+    tx: Sender<Result<InstallProgress, Status>>,
+) -> Result<(), SendError<Result<InstallProgress, Status>>> {
     tx.send(report_install_debug("Mocking Installation"))
         .await?;
     for pool in &mc.pools {
