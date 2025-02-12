@@ -145,5 +145,7 @@ fn install_image(
     image_ref: &ImageReference,
     tx: Sender<Result<InstallProgress, Status>>,
 ) -> Result<(), InstallationError> {
+    let base_path = Path::new(OCI_BASE_CACHE_DIR);
+    let image_path = base_path.join(image_ref.name.clone());
     Ok(())
 }
