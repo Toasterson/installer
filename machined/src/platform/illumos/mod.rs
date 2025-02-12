@@ -1,6 +1,6 @@
 use crate::config::MachinedConfig;
 use crate::machined::InstallProgress;
-use crate::platform::illumos::image::{build_image_ref, fetch_image};
+use crate::platform::illumos::image::{build_image_ref, fetch_image, install_image};
 use crate::platform::illumos::zpool::{create_boot_environment_base_dataset, create_pool};
 use crate::util::{report_install_debug, report_install_error};
 use machineconfig::MachineConfig;
@@ -50,16 +50,24 @@ pub async fn install_system(
         }
     }
 
-    let image_ref = build_image_ref(&mc.image)?;
+    let image_ref = build_image_ref(&mc.image).map_err(|e| {
+        SendError(Err(Status::internal(format!(
+            "Parsing image reference failed: {}",
+            e
+        ))))
+    })?;
 
-    match fetch_image(&image_ref, &config.default_oci_registry, tx) {
-        Ok(_) => {
+    let image_config = match fetch_image(&image_ref, &config.default_oci_registry, tx.clone()) {
+        Ok(image_config) => {
             tx.send(report_install_debug("image fetched")).await?;
+            image_config
         }
         Err(e) => {
             tx.send(report_install_error(e)).await?;
             return Err(SendError(Err(Status::internal("Internal error"))));
         }
-    }
+    };
+
+    install_image(&image_ref, image_config, tx)?;
     Ok(())
 }

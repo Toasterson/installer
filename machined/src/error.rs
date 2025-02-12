@@ -29,4 +29,6 @@ pub enum InstallationError {
     JsonError(#[from] serde_json::error::Error),
     #[error("failed to download blob")]
     BlobDownloadFailed,
+    #[error("Artifact manifests are not supported for download")]
+    ArtifactManifestsNotSupported,
 }
