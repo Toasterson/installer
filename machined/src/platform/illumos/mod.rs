@@ -1,7 +1,10 @@
 use crate::config::MachinedConfig;
 use crate::machined::InstallProgress;
 use crate::platform::illumos::image::{build_image_ref, fetch_image, install_image};
-use crate::platform::illumos::zpool::{create_boot_environment_base_dataset, create_pool};
+use crate::platform::illumos::zpool::{
+    create_boot_environment, create_boot_environment_base_dataset, create_pool,
+    mount_boot_environment,
+};
 use crate::util::{report_install_debug, report_install_error};
 use machineconfig::MachineConfig;
 use std::sync::Arc;
@@ -42,6 +45,29 @@ pub async fn install_system(
     match create_boot_environment_base_dataset() {
         Ok(_) => {
             tx.send(report_install_debug("base root Dataset created"))
+                .await?;
+        }
+        Err(e) => {
+            tx.send(report_install_error(&e)).await?;
+            return Err(SendError(Err(Status::internal("Internal error"))));
+        }
+    }
+
+    let be_path = match create_boot_environment(mc.boot_environment_name.clone()) {
+        Ok(be_path) => {
+            tx.send(report_install_debug("boot environment created"))
+                .await?;
+            be_path
+        }
+        Err(e) => {
+            tx.send(report_install_error(&e)).await?;
+            return Err(SendError(Err(Status::internal("Internal error"))));
+        }
+    };
+
+    match mount_boot_environment(be_path) {
+        Ok(_) => {
+            tx.send(report_install_debug("boot environment mounted to /a"))
                 .await?;
         }
         Err(e) => {

@@ -141,6 +141,7 @@ pub async fn install_image(
         let layer_file_path = build_local_image_path(image_path.as_path(), &layer)
             .to_string_lossy()
             .to_string();
+
         let mut tar_cmd = match Command::new("gtar")
             .arg("-xaf")
             .arg(layer_file_path.as_str())
@@ -156,6 +157,7 @@ pub async fn install_image(
                 ))));
             }
         };
+
         match tar_cmd
             .wait()
             .map_err(|e| SendError(Err(Status::internal("could not wait for tar process"))))?

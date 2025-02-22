@@ -20,6 +20,7 @@ nix = { version = "0.29.0", features = ["net"] }
 passwords = "3.1.16"
 jwt-simple = { version = "0.12.11", default-features = false, features = ["pure-rust"]}
 base64 = "0.22.1"
+chrono = "0.4.39"
 
 [build-dependencies]
 tonic-build = "*"

@@ -41,6 +41,9 @@ pub struct MachineConfig {
     #[knus(child, unwrap(argument))]
     pub image: String,
 
+    #[knus(child, unwrap(argument))]
+    pub boot_environment_name: Option<String>,
+
     #[knus(child)]
     pub sysconfig: SysConfig,
 }
