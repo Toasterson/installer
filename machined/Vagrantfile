@@ -3,7 +3,7 @@
 
 Vagrant.configure("2") do |config|
   config.vm.box = "openindiana/hipster"
-  config.vm.box_version = "2024.11"
+  config.vm.box_version = "2025.02"
   config.vm.box_check_update = true
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "6144"
