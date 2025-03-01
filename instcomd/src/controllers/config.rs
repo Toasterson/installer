@@ -69,8 +69,8 @@ pub fn routes() -> Routes {
         .prefix("api/configs/")
         .add("/", get(list))
         .add("/", post(add))
-        .add(":id", get(get_one))
-        .add(":id", delete(remove))
-        .add(":id", put(update))
-        .add(":id", patch(update))
+        .add("{id}", get(get_one))
+        .add("{id}", delete(remove))
+        .add("{id}", put(update))
+        .add("{id}", patch(update))
 }

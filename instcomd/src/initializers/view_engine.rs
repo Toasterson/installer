@@ -1,4 +1,6 @@
-use axum::{async_trait, Extension, Router as AxumRouter};
+use axum::{Extension};
+use async_trait::async_trait;
+use axum::routing::Router as AxumRouter;
 use fluent_templates::{ArcLoader, FluentLoader};
 use loco_rs::{
     app::{AppContext, Initializer},

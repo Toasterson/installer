@@ -10,9 +10,8 @@ use loco_rs::{
     Result,
 };
 use migration::Migrator;
-use sea_orm::DatabaseConnection;
 use std::path::Path;
-
+use loco_rs::config::Config;
 use crate::{
     controllers, initializers, models::_entities::users, tasks, workers::downloader::DownloadWorker,
 };
@@ -34,8 +33,8 @@ impl Hooks for App {
         )
     }
 
-    async fn boot(mode: StartMode, environment: &Environment) -> Result<BootResult> {
-        create_app::<Self, Migrator>(mode, environment).await
+    async fn boot(mode: StartMode, environment: &Environment, config: Config) -> Result<BootResult> {
+        create_app::<Self, Migrator>(mode, environment, config).await
     }
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
@@ -58,13 +57,13 @@ impl Hooks for App {
         tasks.register(tasks::seed::SeedData);
         // tasks-inject (do not remove)
     }
-    async fn truncate(db: &DatabaseConnection) -> Result<()> {
-        truncate_table(db, users::Entity).await?;
+    async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, users::Entity).await?;
         Ok(())
     }
 
-    async fn seed(db: &DatabaseConnection, base: &Path) -> Result<()> {
-        db::seed::<users::ActiveModel>(db, &base.join("users.yaml").display().to_string()).await?;
+    async fn seed(ctx: &AppContext, base: &Path) -> Result<()> {
+        db::seed::<users::ActiveModel>(&ctx.db, &base.join("users.yaml").display().to_string()).await?;
         Ok(())
     }
 }
