@@ -14,7 +14,7 @@ impl MigrationTrait for Migration {
                     .col(uuid_uniq(Configs::Pid))
                     .col(integer(Configs::UserId))
                     .col(integer(Configs::MachineId))
-                    .col(json(Configs::Data))
+                    .col(text(Configs::Data))
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-configs-user_ids")

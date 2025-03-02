@@ -17,6 +17,12 @@ impl MigrationTrait for Migration {
                     .col(json_null(Machines::Devices))
                     .col(integer(Machines::UserId))
                     .col(date(Machines::StartDate))
+                    .col(string(Machines::Name))
+                    .col(uuid_null(Machines::UserData))
+                    .col(uuid_null(Machines::MetaData))
+                    .col(uuid_null(Machines::VendorData))
+                    .col(uuid_null(Machines::NetworkConfig))
+                    .col(uuid_null(Machines::Sysconfig))
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-machines-user_ids")
@@ -42,11 +48,17 @@ enum Machines {
     Table,
     Id,
     Pid,
+    Name,
     Disks,
     Interfaces,
     Devices,
     UserId,
     StartDate,
+    UserData,
+    MetaData,
+    VendorData,
+    NetworkConfig,
+    Sysconfig,
 }
 
 #[derive(DeriveIden)]

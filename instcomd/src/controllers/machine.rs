@@ -1,15 +1,14 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
+use crate::models::_entities::machines::{ActiveModel, Entity, Model};
+use crate::models::_entities::{configs, machines};
 use axum::debug_handler;
 use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::models::_entities::machines::{ActiveModel, Entity, Model};
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Params {
-    pub pid: Uuid,
     pub disks: Option<serde_json::Value>,
     pub interfaces: serde_json::Value,
     pub devices: Option<serde_json::Value>,
@@ -18,7 +17,6 @@ pub struct Params {
 
 impl Params {
     fn update(&self, item: &mut ActiveModel) {
-        item.pid = Set(self.pid.clone());
         item.disks = Set(self.disks.clone());
         item.interfaces = Set(self.interfaces.clone());
         item.devices = Set(self.devices.clone());
@@ -31,14 +29,28 @@ async fn load_item(ctx: &AppContext, id: i32) -> Result<Model> {
     item.ok_or_else(|| Error::NotFound)
 }
 
-#[debug_handler]
-pub async fn list(State(ctx): State<AppContext>) -> Result<Response> {
-    format::json(Entity::find().all(&ctx.db).await?)
+async fn load_item_by_name(ctx: &AppContext, name: String) -> Result<Model> {
+    let item = Entity::find()
+        .filter(machines::Column::Name.eq(name))
+        .one(&ctx.db)
+        .await?;
+    item.ok_or_else(|| Error::NotFound)
+}
+
+async fn load_config(ctx: &AppContext, pid: Option<Uuid>) -> Result<configs::Model> {
+    let cfg_pid =
+        pid.ok_or_else(|| Error::Message(String::from("no such config for machine exists")))?;
+    let item = configs::Entity::find()
+        .filter(configs::Column::Pid.eq(cfg_pid))
+        .one(&ctx.db)
+        .await?;
+    item.ok_or_else(|| Error::NotFound)
 }
 
 #[debug_handler]
 pub async fn add(State(ctx): State<AppContext>, Json(params): Json<Params>) -> Result<Response> {
     let mut item = ActiveModel {
+        pid: ActiveValue::Set(Uuid::new_v4()),
         ..Default::default()
     };
     params.update(&mut item);
@@ -70,13 +82,50 @@ pub async fn get_one(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Resu
     format::json(load_item(&ctx, id).await?)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConfigType {
+    UserData,
+    MetaData,
+    VendorData,
+    NetworkConfig,
+    Sysconfig,
+}
+
+pub async fn get_config(
+    Path((machine_name, config_type)): Path<(String, ConfigType)>,
+    State(ctx): State<AppContext>,
+) -> Result<Response> {
+    let machine = load_item_by_name(&ctx, machine_name).await?;
+    match config_type {
+        ConfigType::UserData => {
+            format::text(load_config(&ctx, machine.user_data).await?.data.as_str())
+        }
+        ConfigType::MetaData => {
+            format::text(load_config(&ctx, machine.meta_data).await?.data.as_str())
+        }
+        ConfigType::VendorData => {
+            format::text(load_config(&ctx, machine.vendor_data).await?.data.as_str())
+        }
+        ConfigType::NetworkConfig => format::text(
+            load_config(&ctx, machine.network_config)
+                .await?
+                .data
+                .as_str(),
+        ),
+        ConfigType::Sysconfig => {
+            format::text(load_config(&ctx, machine.sysconfig).await?.data.as_str())
+        }
+    }
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/machines/")
-        .add("/", get(list))
         .add("/", post(add))
         .add("{id}", get(get_one))
         .add("{id}", delete(remove))
         .add("{id}", put(update))
         .add("{id}", patch(update))
+        .add("{machine_name}/configs/{config_type}", get(get_config))
 }

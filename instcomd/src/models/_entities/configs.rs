@@ -14,7 +14,7 @@ pub struct Model {
     pub pid: Uuid,
     pub user_id: i32,
     pub machine_id: i32,
-    pub data: Json,
+    pub data: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

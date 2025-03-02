@@ -6,16 +6,16 @@ use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::models::_entities::configs::{ActiveModel, Entity, Model};
+use crate::models::_entities::machines;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Params {
-    pub pid: Uuid,
-    pub data: serde_json::Value,
+    pub machine_name: String,
+    pub data: String,
 }
 
 impl Params {
     fn update(&self, item: &mut ActiveModel) {
-        item.pid = Set(self.pid.clone());
         item.data = Set(self.data.clone());
     }
 }
@@ -26,16 +26,18 @@ async fn load_item(ctx: &AppContext, id: i32) -> Result<Model> {
 }
 
 #[debug_handler]
-pub async fn list(State(ctx): State<AppContext>) -> Result<Response> {
-    format::json(Entity::find().all(&ctx.db).await?)
-}
-
-#[debug_handler]
 pub async fn add(State(ctx): State<AppContext>, Json(params): Json<Params>) -> Result<Response> {
     let mut item = ActiveModel {
+        pid: ActiveValue::Set(Uuid::new_v4()),
         ..Default::default()
     };
     params.update(&mut item);
+    let machine = machines::Entity::find()
+        .filter(machines::Column::Name.eq(params.machine_name))
+        .one(&ctx.db)
+        .await?;
+    let machine = machine.ok_or_else(|| Error::NotFound)?;
+    item.machine_id = ActiveValue::Set(machine.id);
     let item = item.insert(&ctx.db).await?;
     format::json(item)
 }
@@ -67,7 +69,6 @@ pub async fn get_one(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Resu
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("api/configs/")
-        .add("/", get(list))
         .add("/", post(add))
         .add("{id}", get(get_one))
         .add("{id}", delete(remove))

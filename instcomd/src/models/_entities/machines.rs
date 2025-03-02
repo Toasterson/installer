@@ -12,11 +12,17 @@ pub struct Model {
     pub id: i32,
     #[sea_orm(unique)]
     pub pid: Uuid,
+    pub name: String,
     pub disks: Option<Json>,
     pub interfaces: Json,
     pub devices: Option<Json>,
     pub user_id: i32,
     pub start_date: Date,
+    pub user_data: Option<Uuid>,
+    pub meta_data: Option<Uuid>,
+    pub vendor_data: Option<Uuid>,
+    pub network_config: Option<Uuid>,
+    pub sysconfig: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
