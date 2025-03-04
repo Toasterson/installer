@@ -19,6 +19,9 @@ ARGS=(
 	'-F' "name=$NAME"
 )
 
+#
+# Build Boot Archive
+#
 pfexec image-builder \
     build \
     -d "$DATASET" \

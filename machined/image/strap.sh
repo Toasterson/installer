@@ -16,9 +16,8 @@ TOP=$(cd "$(dirname "$0")" && pwd)
 
 STRAP_ARGS=()
 ALL_ARGS=()
-IMAGE_SUFFIX=
 
-while getopts 'BEfs:' c; do
+while getopts 'BEf:' c; do
 	case "$c" in
 	f)
 		#
@@ -40,18 +39,6 @@ while getopts 'BEfs:' c; do
 		#
 		ALL_ARGS+=( '-F' 'build' )
 		;;
-	s)
-		#
-		# You can customise the strap image by swapping out the middle
-		# stage, 02-image.  Normally this takes the expensive base OS
-		# step (01-strap) and adds a few extra packages for
-		# convenience.  If you specify a -s option here, e.g.,
-		# "-s mine", we will look for, e.g.,
-		# "hipster-02-image-mine.json" instead of the stock
-		# "hipster-02-image.json".
-		#
-		IMAGE_SUFFIX="-$OPTARG"
-		;;
 	\?)
 		printf 'usage: %s [-f]\n' "$0" >&2
 		exit 2
@@ -60,7 +47,7 @@ while getopts 'BEfs:' c; do
 done
 shift $((OPTIND - 1))
 
-cd "$TOP"
+cd "$TOP" || exit
 
 for n in 01-strap 02-image 03-archive; do
   pfexec image-builder \

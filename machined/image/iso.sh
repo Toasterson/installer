@@ -12,6 +12,9 @@ TOP=$(cd "$(dirname "$0")" && pwd)
 
 cd "$TOP"
 
+#
+# Build EFI Data
+#
 pfexec image-builder \
     build \
     -d "$DATASET" \

@@ -6,11 +6,12 @@ fi
 
 if ! [ -f "$HOME/.cargo/bin/image-builder" ]; then
   # shellcheck disable=SC2164
-  cd "$HOME/image-builder"
+  pushd "$HOME/image-builder"
   cargo install --path .
+  popd || exit
 fi
 
 TOP=$(cd "$(dirname "$0")" && pwd)
 . "$TOP/lib/common.sh"
 
-pfexec zfs create $DATASET
+pfexec zfs create "$DATASET"
