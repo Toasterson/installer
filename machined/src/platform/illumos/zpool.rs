@@ -42,7 +42,8 @@ fn generate_be_name() -> String {
 }
 
 pub fn create_boot_environment(be_name: Option<String>) -> Result<String, InstallationError> {
-    let mut zfs_cmd = Command::new(ZFS_BIN).arg("create");
+    let mut zfs_cmd = Command::new(ZFS_BIN);
+    zfs_cmd.arg("create");
 
     let be_name = if let Some(be_name) = be_name {
         be_name.clone()
@@ -64,7 +65,8 @@ pub fn create_boot_environment(be_name: Option<String>) -> Result<String, Instal
 }
 
 pub fn mount_boot_environment(be_path: String) -> Result<(), InstallationError> {
-    let mut zfs_cmd = Command::new(ZFS_BIN).args(["mount", &be_path, "/a"]);
+    let mut zfs_cmd = Command::new(ZFS_BIN);
+    zfs_cmd.args(["mount", &be_path, "/a"]);
 
     let out = zfs_cmd.output()?;
     if !out.status.success() {
