@@ -70,7 +70,7 @@ async fn select_correct_manifest(
                 format!("selecting {} to install", manifest.digest.as_str()).as_str(),
             ))
             .await
-            .map_err(|e| InstallationError::SendFailed)?;
+            .map_err(|_e| InstallationError::SendFailed)?;
 
             let resp = session
                 .fetch_blob_as::<ImageManifest>(&manifest.digest)
@@ -107,7 +107,7 @@ async fn fetch_blobs(
             format!("downloading blob {}", &blob.as_str()).as_str(),
         ))
         .await
-        .map_err(|e| InstallationError::BlobDownloadFailed)?;
+        .map_err(|_e| InstallationError::BlobDownloadFailed)?;
 
         let local_path = build_local_image_path(local_image_path, &blob);
         let local_dir = local_path.parent().unwrap();
@@ -162,7 +162,7 @@ pub async fn install_image(
 
         match tar_cmd
             .wait()
-            .map_err(|e| SendError(Err(Status::internal("could not wait for tar process"))))?
+            .map_err(|_e| SendError(Err(Status::internal("could not wait for tar process"))))?
             .code()
         {
             Some(ec) if ec != 0 => {

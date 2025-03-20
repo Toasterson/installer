@@ -23,7 +23,7 @@ pub async fn install_system(
 ) -> Result<(), SendError<Result<InstallProgress, Status>>> {
     tx.send(report_install_debug("Starting installation"))
         .await?;
-    for pool in mc.pools {
+    for pool in &mc.pools {
         tx.send(report_install_debug(
             format!("Setting up pool {}", &pool.name).as_str(),
         ))
