@@ -20,6 +20,12 @@ ARGS=(
 )
 
 #
+# Build machined and place it into a place to be picked up by the image build
+#
+cargo build --release --path ../
+cp ../target/release/machined templates/files/machined
+
+#
 # Build Boot Archive
 #
 pfexec image-builder \

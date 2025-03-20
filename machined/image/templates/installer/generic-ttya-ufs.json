@@ -31,6 +31,8 @@
       "src": "bootparams.sh",
       "owner": "root", "group": "bin", "mode": "0755" },
 
+    { "t": "include", "name": "machined-dev" },
+
     { "t": "seed_smf", "apply_profiles": [ "platform" ] }
   ]
 }
