@@ -19,8 +19,7 @@ use tonic::Status;
 pub const OCI_BASE_CACHE_DIR: &str = "/var/tmp/";
 
 pub fn build_image_ref(image: &str) -> Result<ImageReference, InstallationError> {
-    Ok(ImageReference::from_str(image)
-        .map_err(|e| Err(CannotCreateImageReference(e.to_string())))?)
+    ImageReference::from_str(image).map_err(|e| CannotCreateImageReference(e.to_string()))
 }
 
 pub async fn fetch_image(

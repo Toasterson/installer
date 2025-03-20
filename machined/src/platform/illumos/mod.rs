@@ -83,7 +83,8 @@ pub async fn install_system(
         ))))
     })?;
 
-    let image_config = match fetch_image(&image_ref, &config.default_oci_registry, tx.clone()) {
+    let image_config = match fetch_image(&image_ref, &config.default_oci_registry, tx.clone()).await
+    {
         Ok(image_config) => {
             tx.send(report_install_debug("image fetched")).await?;
             image_config
