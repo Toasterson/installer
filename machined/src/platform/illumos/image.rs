@@ -62,14 +62,16 @@ async fn select_correct_manifest(
     local_image_path: &Path,
 ) -> Result<AnyOciConfig, InstallationError> {
     let cur_os_arch = format!("{}/{}", env::consts::OS, std::env::consts::ARCH);
-    for manifest in list {
-        let plat = manifest.platform;
+    for manifest in list.manifests.iter() {
+        let plat = manifest.platform.clone();
         let m_os_arch = format!("{}/{}", plat.os, plat.architecture);
         if m_os_arch == cur_os_arch {
             tx.send(report_install_debug(
                 format!("selecting {} to install", manifest.digest.as_str()).as_str(),
             ))
-            .await?;
+            .await
+            .map_err(|e| InstallationError::SendFailed)?;
+
             let resp = session
                 .fetch_blob_as::<ImageManifest>(&manifest.digest)
                 .await?;
@@ -105,7 +107,8 @@ async fn fetch_blobs(
             format!("downloading blob {}", &blob.as_str()).as_str(),
         ))
         .await
-        .map_err(|e| Err(InstallationError::BlobDownloadFailed))?;
+        .map_err(|e| InstallationError::BlobDownloadFailed)?;
+
         let local_path = build_local_image_path(local_image_path, &blob);
         let local_dir = local_path.parent().unwrap();
         if !local_dir.exists() {
@@ -163,8 +166,10 @@ pub async fn install_image(
             .code()
         {
             Some(ec) if ec != 0 => {
-                tx.send(report_install_error(Err("tar return non-zero exit code")))
-                    .await?;
+                tx.send(report_install_error(
+                    InstallationError::TarReturnNonzeroExitCode,
+                ))
+                .await?;
                 return Err(SendError(Err(Status::internal(
                     "tar returned non-zero exit code",
                 ))));

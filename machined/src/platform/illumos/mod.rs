@@ -95,6 +95,6 @@ pub async fn install_system(
         }
     };
 
-    install_image(&image_ref, image_config, tx)?;
+    install_image(&image_ref, image_config, tx).await?;
     Ok(())
 }

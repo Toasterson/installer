@@ -33,4 +33,8 @@ pub enum InstallationError {
     BlobDownloadFailed,
     #[error("Artifact manifests are not supported for download")]
     ArtifactManifestsNotSupported,
+    #[error("tar return non-zero exit code")]
+    TarReturnNonzeroExitCode,
+    #[error("Send Failed")]
+    SendFailed,
 }
