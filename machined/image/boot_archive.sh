@@ -23,7 +23,8 @@ ARGS=(
 # Build machined and place it into a place to be picked up by the image build
 #
 cargo build --release
-cp ../target/release/machined templates/files/machined
+CARGO_TARGET_DIR=$(cargo metadata | jq '.target_directory')
+cp ${CARGO_TARGET_DIR}/release/machined templates/files/machined
 
 #
 # Build Boot Archive
