@@ -101,7 +101,7 @@ pub async fn install_system(
         }
     };
 
-    install_image(&image_ref, image_config, tx).await?;
+    install_image(&image_ref, image_config, &tx).await?;
 
     match make_be_bootable(&be_path) {
         Ok(_) => {

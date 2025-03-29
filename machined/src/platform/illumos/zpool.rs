@@ -44,7 +44,7 @@ pub fn create_dataset<S>(
     opts: Option<&[(S, S)]>,
 ) -> Result<(), InstallationError>
 where
-    S: AsRef<str>,
+    S: AsRef<str> + std::fmt::Display,
 {
     let mut zfs_cmd = Command::new(ZFS_BIN);
     zfs_cmd.arg("create");

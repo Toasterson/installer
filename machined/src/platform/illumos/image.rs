@@ -128,7 +128,7 @@ fn build_local_image_path(local_image_path: &Path, blob: &OciDigest) -> PathBuf 
 pub async fn install_image(
     image_ref: &ImageReference,
     image_config: AnyOciConfig,
-    tx: Sender<Result<InstallProgress, Status>>,
+    tx: &Sender<Result<InstallProgress, Status>>,
 ) -> Result<(), SendError<Result<InstallProgress, Status>>> {
     let base_path = Path::new(OCI_BASE_CACHE_DIR);
     let image_path = base_path.join(image_ref.name.clone());
