@@ -3,13 +3,24 @@
 
 Vagrant.configure("2") do |config|
   config.vm.box = "openindiana/hipster"
-  config.vm.box_version = "2025.02"
+  config.vm.box_version = "2025.04"
   config.vm.box_check_update = true
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "6144"
   end
+
+  config.vm.network :private_network, :libvirt__network_name => "bootnet.local", :libvirt__network_address => "10.0.3.0/24",
+    :type => "dhcp", :libvirt__dhcp_start => "10.0.3.26", :libvirt__dhcp_stop => "10.0.3.30", :libvirt__dhcp_bootp_file => "/boot/pxeboot",
+    :libvirt__dhcp_bootp_server => "10.0.3.2", :ip => "10.0.3.2", auto_config: false
+
+ config.vm.provider :libvirt do |libvirt|
+    config.vm.synced_folder ".", "/vagrant", type: "rsync",
+      rsync__args: ["--verbose", "--archive", "-zz", "--copy-links", "--exclude=target"],
+      rsync__rsync_path: "pfexec rsync", owner: "vagrant", group: "vagrant"
+ end
+
   config.vm.provision "shell", inline: <<-SHELL
-    pkg install build-essential rustc
+    pkg install build-essential rustc tftp isc-dhcp
     usermod -P 'Primary Administrator' vagrant
   SHELL
   config.vm.provision "shell", privileged: false, inline: <<-SHELL
