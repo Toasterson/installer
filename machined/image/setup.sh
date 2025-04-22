@@ -11,7 +11,8 @@ if ! [ -f "$HOME/.cargo/bin/image-builder" ]; then
   popd || exit
 fi
 
-pfexec zfs create "$DATASET"
 
 TOP=$(cd "$(dirname "$0")" && pwd)
 . "$TOP/lib/common.sh"
+
+pfexec zfs create "$DATASET"
