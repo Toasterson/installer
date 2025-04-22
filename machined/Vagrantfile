@@ -10,7 +10,7 @@ Vagrant.configure("2") do |config|
   end
 
   config.vm.network :private_network, :libvirt__network_name => "bootnet.local", :libvirt__network_address => "10.0.3.0/24",
-    :type => "dhcp", :libvirt__dhcp_start => "10.0.3.26", :libvirt__dhcp_stop => "10.0.3.30", :libvirt__dhcp_bootp_file => "/boot/pxeboot",
+    :type => "dhcp", :libvirt__dhcp_start => "10.0.3.26", :libvirt__dhcp_stop => "10.0.3.30", :libvirt__dhcp_bootp_file => "/installer-generic.iso",
     :libvirt__dhcp_bootp_server => "10.0.3.2", :ip => "10.0.3.2", auto_config: false
 
  config.vm.provider :libvirt do |libvirt|
