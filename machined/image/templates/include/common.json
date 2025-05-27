@@ -1,42 +1,91 @@
 {
   "steps": [
-    { "t": "ensure_symlink", "link": "/etc/svc/profile/generic.xml",
+    {
+      "t": "ensure_symlink",
+      "link": "/etc/svc/profile/generic.xml",
       "target": "generic_limited_net.xml",
-      "owner": "root", "group": "root" },
-    { "t": "ensure_symlink", "link": "/etc/svc/profile/inetd_services.xml",
+      "owner": "root",
+      "group": "root"
+    },
+    {
+      "t": "ensure_symlink",
+      "link": "/etc/svc/profile/inetd_services.xml",
       "target": "inetd_generic.xml",
-      "owner": "root", "group": "root" },
-    { "t": "ensure_symlink", "link": "/etc/svc/profile/platform.xml",
+      "owner": "root",
+      "group": "root"
+    },
+    {
+      "t": "ensure_symlink",
+      "link": "/etc/svc/profile/platform.xml",
       "target": "platform_none.xml",
-      "owner": "root", "group": "root" },
+      "owner": "root",
+      "group": "root"
+    },
 
-    { "t": "ensure_file", "file": "/etc/svc/profile/platform_none.xml",
+    {
+      "t": "ensure_file",
+      "file": "/etc/svc/profile/platform_none.xml",
       "src": "platform_i86pc.xml",
-      "owner": "root", "group": "sys", "mode": "444" },
+      "owner": "root",
+      "group": "sys",
+      "mode": "444"
+    },
 
-    { "t": "ensure_symlink", "link": "/etc/svc/profile/name_service.xml",
+    {
+      "t": "ensure_symlink",
+      "link": "/etc/svc/profile/name_service.xml",
       "target": "ns_dns.xml",
-      "owner": "root", "group": "root" },
-    { "t": "ensure_file", "file": "/etc/nsswitch.conf",
+      "owner": "root",
+      "group": "root"
+    },
+    {
+      "t": "ensure_file",
+      "file": "/etc/nsswitch.conf",
       "imagesrc": "/etc/nsswitch.dns",
-      "owner": "root", "group": "root", "mode": "644" },
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
 
-    { "t": "shadow", "username": "root", "password":
-    "$5$kr1VgdIt$OUiUAyZCDogH/uaxH71rMeQxvpDEY2yX.x0ZQRnmeb9" },
+    {
+      "t": "shadow",
+      "username": "root",
+      "password": "$5$saltsalt$4mV9XAUeHYLLr7AgfHDqez6fjTV2iPO1KvynBUqFa26"
+    },
 
-    { "t": "ensure_file", "file": "/etc/inet/hosts",
+    {
+      "t": "ensure_file",
+      "file": "/etc/inet/hosts",
       "src": "hosts",
-      "owner": "root", "group": "root", "mode": "644" },
-    { "t": "ensure_file", "file": "/etc/nodename",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+    {
+      "t": "ensure_file",
+      "file": "/etc/nodename",
       "contents": "unknown\n",
-      "owner": "root", "group": "root", "mode": "644" },
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
 
-    { "t": "ensure_file", "file": "/etc/default/dhcpagent",
+    {
+      "t": "ensure_file",
+      "file": "/etc/default/dhcpagent",
       "src": "dhcpagent",
-      "owner": "root", "group": "sys", "mode": "644" },
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
 
-    { "t": "ensure_file", "file": "/etc/resolv.conf",
+    {
+      "t": "ensure_file",
+      "file": "/etc/resolv.conf",
       "contents": "",
-      "owner": "root", "group": "root", "mode": "644" }
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    }
   ]
 }
