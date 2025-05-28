@@ -34,7 +34,7 @@
 <service name='system/filesystem/root-minimal' type='service' version='1'>
 
         <single_instance />
-        <instance name='media' enabled='true'>
+        <instance name='default' enabled='true'>
 
         <exec_method
                 type='method'
