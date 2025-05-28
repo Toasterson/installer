@@ -32,6 +32,33 @@
     },
 
     {
+      "t": "ensure_file",
+      "file": "/lib/svc/system/filesystem-minimal-media.xml",
+      "src": "filesystem-minimal-media.xml",
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/system/filesystem-root-media.xml",
+      "src": "filesystem-root-media.xml",
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/system/live-fs-usr.xml",
+      "src": "live-fs-usr.xml",
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
+
+    {
       "t": "ensure_symlink",
       "link": "/etc/svc/profile/name_service.xml",
       "target": "ns_dns.xml",
