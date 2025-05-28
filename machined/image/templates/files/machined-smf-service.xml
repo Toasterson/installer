@@ -54,6 +54,15 @@
             <service_fmri value='svc:/milestone/devices' />
         </dependency>
 
+        <dependency
+            name='dhcp-start'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/network/start-dhcp' />
+        </dependency>
+
         <!-- Hold the network and system configuration milestones back, in case
           we end up making changes to the IP stack, hostname, or the DNS
           configuration, etc. -->
@@ -77,15 +86,6 @@
         <dependent name='routing' grouping='optional_all' restart_on='none'>
             <service_fmri value='svc:/network/routing-setup' />
         </dependent>
-
-        <dependency
-            name='dhcp-start'
-            grouping='require_all'
-            restart_on='none'
-            type='service'
-        >
-            <service_fmri value='svc:/network/start-dhcp' />
-        </dependency>
 
         <exec_method
             type='method'
