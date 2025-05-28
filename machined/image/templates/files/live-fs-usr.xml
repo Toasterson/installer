@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" ?>
 <!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
 <!--
  CDDL HEADER START
@@ -28,21 +28,9 @@
  operating system upgrade.  Make customizations in a different
  file.
 -->
-
 <service_bundle type='manifest' name='SUNWcsr:filesystem-usr'>
 
-<service
-        name='system/filesystem/usr'
-        type='service'
-        version='1'>
-
-        <dependency
-                name='boot-archive'
-                grouping='require_all'
-                restart_on='none'
-                type='service'>
-                <service_fmri value='svc:/system/boot-archive' />
-        </dependency>
+<service name='system/filesystem/usr' type='service' version='1'>
 
         <property_group name='startd' type='framework'>
                 <propval name='duration' type='astring' value='transient' />
@@ -58,13 +46,15 @@
                 type='method'
                 name='start'
                 exec=':true'
-                timeout_seconds='0' />
+                timeout_seconds='0'
+            />
 
         <exec_method
                 type='method'
                 name='stop'
                 exec=':true'
-                timeout_seconds='3' />
+                timeout_seconds='3'
+            />
 
         </instance>
 

@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" ?>
 <!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
 <!--
  CDDL HEADER START
@@ -29,47 +29,26 @@
  file.
 
 -->
-
 <service_bundle type='manifest' name='SUNWcsr:filesystem-root-minimal'>
 
-<service
-        name='system/filesystem/root-minimal'
-        type='service'
-        version='1'>
+<service name='system/filesystem/root-minimal' type='service' version='1'>
 
-        <single_instance/>
+        <single_instance />
         <instance name='media' enabled='true'>
-
-        <!--
-          We depend on identity-node so that the printing of
-          the hostname doesn't mess up the keyboard prompt
-        -->
-        <dependency
-                name='identity-node'
-                type='service'
-                grouping='require_all'
-                restart_on='none' >
-                <service_fmri value='svc:/system/identity:node' />
-        </dependency>
-
-        <dependent
-                name='media-fs-root'
-                grouping='require_all'
-                restart_on='none'>
-                <service_fmri value='svc:/system/filesystem/root:media' />
-        </dependent>
 
         <exec_method
                 type='method'
                 name='start'
                 exec=':true'
-                timeout_seconds='0' />
+                timeout_seconds='0'
+            />
 
         <exec_method
                 type='method'
                 name='stop'
                 exec=':true'
-                timeout_seconds='0' />
+                timeout_seconds='0'
+            />
 
         <property_group name='startd' type='framework'>
                 <propval name='duration' type='astring' value='transient' />
