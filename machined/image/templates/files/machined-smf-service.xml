@@ -1,6 +1,5 @@
-<?xml version="1.0"?>
+<?xml version="1.0" ?>
 <!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
-
 <service_bundle type='manifest' name='installer-machined'>
 
     <service name='system/installer/machined' type='service' version='1'>
@@ -8,30 +7,50 @@
         <single_instance />
 
         <!-- File systems should all be mounted before we begin: -->
-        <dependency name='fs-root' grouping='require_all' restart_on='none'
-                    type='service'>
+        <dependency
+            name='fs-root'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
             <service_fmri value='svc:/system/filesystem/root' />
         </dependency>
-        <dependency name='fs-minimal' grouping='require_all' restart_on='none'
-                    type='service'>
+        <dependency
+            name='fs-minimal'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
             <service_fmri value='svc:/system/filesystem/minimal' />
         </dependency>
 
         <!-- We are going to manipulate the network configuration, but it should
           be in the expected state (with all management daemons running) before
           we try to do that. -->
-        <dependency name='loopback' grouping='require_all' restart_on='none'
-                    type='service'>
+        <dependency
+            name='loopback'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
             <service_fmri value='svc:/network/loopback' />
         </dependency>
-        <dependency name='physical' grouping='require_all' restart_on='none'
-                    type='service'>
+        <dependency
+            name='physical'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
             <service_fmri value='svc:/network/physical' />
         </dependency>
 
         <!-- Run after initial device configuration has completed. -->
-        <dependency name='devices' grouping='require_all' restart_on='none'
-                    type='service'>
+        <dependency
+            name='devices'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
             <service_fmri value='svc:/milestone/devices' />
         </dependency>
 
@@ -59,11 +78,28 @@
             <service_fmri value='svc:/network/routing-setup' />
         </dependent>
 
-        <exec_method type='method' name='start'
-                     exec='/usr/lib/machined'
-                     timeout_seconds='60' />
+        <dependency
+            name='dhcp-start'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/network/start-dhcp' />
+        </dependency>
 
-        <exec_method type='method' name='stop' exec=':true' timeout_seconds='3' />
+        <exec_method
+            type='method'
+            name='start'
+            exec='/usr/lib/machined'
+            timeout_seconds='60'
+        />
+
+        <exec_method
+            type='method'
+            name='stop'
+            exec=':true'
+            timeout_seconds='3'
+        />
 
         <property_group name='startd' type='framework'>
             <propval name='duration' type='astring' value='child' />
@@ -76,7 +112,9 @@
                 <loctext xml:lang='C'>illumos Automated installer</loctext>
             </common_name>
             <description>
-                <loctext xml:lang='C'>Installs illumos Oses based on a Config</loctext>
+                <loctext
+                    xml:lang='C'
+                >Installs illumos Oses based on a Config</loctext>
             </description>
         </template>
     </service>
