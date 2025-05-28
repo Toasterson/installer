@@ -33,7 +33,7 @@
 
     {
       "t": "ensure_file",
-      "file": "/lib/svc/system/filesystem-minimal-media.xml",
+      "file": "/lib/svc/manifest/system/filesystem/minimal-fs-media.xml",
       "src": "filesystem-minimal-media.xml",
       "owner": "root",
       "group": "sys",
@@ -42,7 +42,7 @@
 
     {
       "t": "ensure_file",
-      "file": "/lib/svc/system/filesystem-root-media.xml",
+      "file": "/lib/svc/manifest/system/filesystem/root-fs-media.xml",
       "src": "filesystem-root-media.xml",
       "owner": "root",
       "group": "sys",
@@ -51,7 +51,7 @@
 
     {
       "t": "ensure_file",
-      "file": "/lib/svc/system/live-fs-usr.xml",
+      "file": "/lib/svc/manifest/system/filesystem/usr-fs-media.xml",
       "src": "live-fs-usr.xml",
       "owner": "root",
       "group": "sys",
