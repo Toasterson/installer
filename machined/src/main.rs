@@ -19,6 +19,7 @@ use miette::IntoDiagnostic;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tonic::codec::CompressionEncoding;
 use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::codegen::tokio_stream::Stream;
 use tonic::transport::Server;
@@ -143,7 +144,11 @@ async fn main() -> miette::Result<()> {
     };
 
     Server::builder()
-        .add_service(MachineServiceServer::new(machined))
+        .add_service(
+            MachineServiceServer::new(machined)
+                .send_compressed(CompressionEncoding::Zstd)
+                .accept_compressed(CompressionEncoding::Zstd),
+        )
         .serve(addr)
         .await
         .into_diagnostic()?;
