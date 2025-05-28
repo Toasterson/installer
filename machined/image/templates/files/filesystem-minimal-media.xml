@@ -40,7 +40,7 @@
                 type='method'
                 name='start'
                 exec='/lib/svc/method/live-fs-root-minimal'
-                timeout_seconds='0'
+                timeout_seconds='120'
             />
 
         <exec_method
