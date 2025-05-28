@@ -60,6 +60,15 @@
 
     {
       "t": "ensure_file",
+      "file": "/lib/svc/method/fs-minimal",
+      "src": "live-fs-root-minimal",
+      "owner": "root",
+      "group": "sys",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
       "file": "/lib/svc/manifest/system/filesystem/root-fs-media.xml",
       "src": "filesystem-root-media.xml",
       "owner": "root",
