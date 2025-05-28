@@ -68,6 +68,24 @@
     },
 
     {
+      "t": "ensure_file",
+      "file": "/lib/svc/manifest/network/start-dhcp.xml",
+      "src": "start-dhcp.xml",
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/method/start-dhcp-everywhere",
+      "src": "start-dhcp-everywhere",
+      "owner": "root",
+      "group": "sys",
+      "mode": "755"
+    },
+
+    {
       "t": "ensure_symlink",
       "link": "/etc/svc/profile/name_service.xml",
       "target": "ns_dns.xml",

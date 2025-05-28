@@ -1,0 +1,6 @@
+#!/usr/bin/bash
+
+for link in $(dladm show-link -o link -p); do
+    echo "Starting DHCP on ${link}"
+    ipadm create-addr -T dhcp ${link}/v4
+done

@@ -1,0 +1,40 @@
+<?xml version="1.0" ?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='installer:start-dhcp'>
+
+<service name='network/start-dhcp' type='service' version='1'>
+
+        <instance name='default' enabled='true'>
+
+        <exec_method
+                type='method'
+                name='start'
+                exec='/lib/svc/method/start-dhcp-everywhere'
+                timeout_seconds='120'
+            />
+
+        <exec_method
+                type='method'
+                name='stop'
+                exec=':true'
+                timeout_seconds='0'
+            />
+
+        <property_group name='startd' type='framework'>
+                <propval name='duration' type='astring' value='transient' />
+        </property_group>
+
+        </instance>
+
+        <stability value='Unstable' />
+
+        <template>
+                <common_name>
+                        <loctext xml:lang='C'>
+                                root file system mount
+                        </loctext>
+                </common_name>
+        </template>
+</service>
+
+</service_bundle>

@@ -1,7 +1,7 @@
-use std::fs::create_dir_all;
+use crate::{Error, Result};
 use platform_dirs::AppDirs;
 use serde::{Deserialize, Serialize};
-use crate::{Error, Result};
+use std::fs::create_dir_all;
 
 const SATE_FILE_NAME: &str = "state.json";
 const APP_NAME: &str = "installadm";
@@ -17,7 +17,11 @@ impl State {
     }
 
     pub fn get_server(&self, name: &str) -> Option<&Server> {
-        self.servers.iter().filter(|server| server.name == name).next().clone()
+        self.servers
+            .iter()
+            .filter(|server| server.name == name)
+            .next()
+            .clone()
     }
 }
 
@@ -32,14 +36,13 @@ pub fn read_state_file() -> Result<State> {
     let app_dirs = AppDirs::new(Some(APP_NAME), false).ok_or(Error::NoAppDir)?;
     let state_file = app_dirs.config_dir.join(SATE_FILE_NAME);
     if !state_file.exists() {
-        create_dir_all(&state_file.parent().ok()?)?;
-        std::fs::File::create(state_file)?;
-        Ok(State{
+        create_dir_all(&state_file.parent().ok_or(Error::NoParentDir)?)?;
+        Ok(State {
             servers: Vec::new(),
         })
     } else {
         let rdr = std::io::BufReader::new(std::fs::File::open(state_file)?);
-        Ok(serde_json::from_reader(rdr))
+        Ok(serde_json::from_reader(rdr)?)
     }
 }
 
@@ -47,8 +50,9 @@ pub fn save_state(state: State) -> Result<()> {
     let app_dirs = AppDirs::new(Some(APP_NAME), false).ok_or(Error::NoAppDir)?;
     let state_file = app_dirs.config_dir.join(SATE_FILE_NAME);
     if !state_file.exists() {
-        create_dir_all(&state_file.parent().ok()?)?;
+        create_dir_all(&state_file.parent().ok_or(Error::NoParentDir)?)?;
     }
     let writer = std::io::BufWriter::new(std::fs::File::create(state_file)?);
     serde_json::to_writer_pretty(writer, &state)?;
+    Ok(())
 }

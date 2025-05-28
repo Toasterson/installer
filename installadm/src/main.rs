@@ -1,18 +1,19 @@
+use crate::machined::claim_request::ClaimSecret;
+use crate::machined::machine_service_client::MachineServiceClient;
+use crate::machined::{ClaimRequest, InstallConfig};
+use crate::state::{read_state_file, save_state, Server};
+use clap::{Parser, Subcommand};
+use miette::Diagnostic;
 use std::fs::read_to_string;
 use std::path::PathBuf;
 use std::str::FromStr;
-use clap::{Parser, Subcommand};
-use miette::Diagnostic;
 use thiserror::Error;
 use tonic::codec::CompressionEncoding;
 use tonic::codegen::http;
 use tonic::codegen::tokio_stream::StreamExt;
-use tonic::Status;
 use tonic::transport::Channel;
-use crate::machined::claim_request::ClaimSecret;
-use crate::machined::{ClaimRequest, InstallConfig};
-use crate::machined::machine_service_client::MachineServiceClient;
-use crate::state::{read_state_file, save_state, Server};
+use tonic::Status;
+use url::Url;
 
 mod machined;
 mod state;
@@ -31,32 +32,39 @@ pub enum Error {
     CurrentlyPasswordClaimRequired,
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+    #[error(transparent)]
+    JSONError(#[from] serde_json::Error),
+    #[error(transparent)]
+    UrlParse(#[from] url::ParseError),
     #[error("No such server please claim it first")]
     NoSuchServer,
+    #[error("No parent dir")]
+    NoParentDir,
+    #[error("Please provide a servername none can be inferred")]
+    ServerNameCannotBeInferred,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Parser)]
 struct Args {
-    #[arg(global = true)]
-    server_name: String,
     #[command(subcommand)]
-    command: Commands
+    command: Commands,
 }
 
 #[derive(Debug, Subcommand)]
 enum Commands {
     Claim {
-        secret: Option<String>,
         url: String,
+        secret: Option<String>,
+        name: Option<String>,
     },
     Install {
+        name: String,
         #[arg(short, long)]
         config: PathBuf,
-    }
+    },
 }
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -64,32 +72,39 @@ async fn main() -> Result<()> {
     let mut state = read_state_file()?;
 
     match args.command {
-        Commands::Claim { secret, url } => {
+        Commands::Claim { secret, url, name } => {
+            let url_url: Url = url.parse()?;
             if secret.is_none() {
                 return Err(Error::CurrentlyPasswordClaimRequired);
             }
 
-            let claim_request = tonic::Request::new(ClaimRequest{
+            let server_name = if let Some(arg_name) = name {
+                arg_name
+            } else if let Some(host_name_str) = url_url.host_str() {
+                host_name_str.to_owned()
+            } else {
+                return Err(Error::ServerNameCannotBeInferred);
+            };
+
+            let claim_request = tonic::Request::new(ClaimRequest {
                 claim_secret: secret.map(|s| ClaimSecret::ClaimPassword(s)),
             });
             let mut client = connect(url.as_str()).await?;
 
             let response = client.claim(claim_request).await?;
             let claim_response = response.into_inner();
-            let srv =  Server{
-                name: args.server_name,
+            let srv = Server {
+                name: server_name.clone(),
                 uri: url,
                 claim_token: claim_response.claim_token,
             };
             state.add_server(srv);
             save_state(state)?;
         }
-        Commands::Install { config } => {
-            let server = state.get_server(&args.server_name).ok_or(Error::NoSuchServer)?;
+        Commands::Install { config, name } => {
+            let server = state.get_server(&name).ok_or(Error::NoSuchServer)?;
             let machineconfig = read_to_string(&config)?;
-            let install_request =  tonic::Request::new(InstallConfig{
-                machineconfig,
-            });
+            let install_request = tonic::Request::new(InstallConfig { machineconfig });
             let mut client = connect(server.uri.as_str()).await?;
             let response = client.install(install_request).await?;
             let mut stream = response.into_inner();
