@@ -117,11 +117,15 @@ async fn main() -> miette::Result<()> {
             tracing_subscriber::fmt::layer()
                 .compact()
                 .with_writer(msg_log)
-                .with_ansi(true),
+                .with_ansi(true)
+                .with_filter(tracing_subscriber::filter::LevelFilter::DEBUG),
         )
         .with(
             // stdout layer, to view everything in the console
-            tracing_subscriber::fmt::layer().compact().with_ansi(true),
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_ansi(true)
+                .with_filter(tracing_subscriber::filter::LevelFilter::DEBUG),
         );
     tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
 
