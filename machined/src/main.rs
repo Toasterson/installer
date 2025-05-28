@@ -16,6 +16,7 @@ use jwt_simple::prelude::*;
 use machineconfig::MachineConfig;
 use machined::machine_service_server::MachineService;
 use miette::IntoDiagnostic;
+use std::fs::OpenOptions;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -25,7 +26,7 @@ use tonic::codegen::tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::info;
-use tracing_subscriber;
+use tracing_subscriber::{self, prelude::*, Registry};
 
 type ProgressMessage = Result<InstallProgress, Status>;
 type ResponseStream = Pin<Box<dyn Stream<Item = ProgressMessage> + Send>>;
@@ -105,7 +106,24 @@ impl MachineService for Svc {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> miette::Result<()> {
     // install global collector configured based on RUST_LOG env var.
-    tracing_subscriber::fmt::init();
+    let msg_log = OpenOptions::new()
+        .append(true)
+        .create(false)
+        .open("/dev/msglog")
+        .into_diagnostic()?;
+    let subscriber = Registry::default()
+        .with(
+            // msglog layer, to view everything in the console as smf service have their output rerouted to a logfile by smf
+            tracing_subscriber::fmt::layer()
+                .compact()
+                .with_writer(msg_log)
+                .with_ansi(true),
+        )
+        .with(
+            // stdout layer, to view everything in the console
+            tracing_subscriber::fmt::layer().compact().with_ansi(true),
+        );
+    tracing::subscriber::set_global_default(subscriber).into_diagnostic()?;
 
     let cfg = load_config()?;
 

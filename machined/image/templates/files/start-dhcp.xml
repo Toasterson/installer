@@ -4,7 +4,17 @@
 
 <service name='network/start-dhcp' type='service' version='1'>
 
-        <instance name='default' enabled='true'>
+        <create_default_instance enabled='true' />
+        <single_instance />
+
+        <dependency
+                name='physical'
+                grouping='require_all'
+                restart_on='none'
+                type='service'
+            >
+            <service_fmri value='svc:/network/physical' />
+        </dependency>
 
         <exec_method
                 type='method'

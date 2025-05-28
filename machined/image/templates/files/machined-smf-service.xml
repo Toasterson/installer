@@ -97,7 +97,7 @@
         <exec_method
             type='method'
             name='stop'
-            exec=':true'
+            exec=':kill'
             timeout_seconds='3'
         />
 
