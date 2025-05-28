@@ -42,6 +42,24 @@
 
     {
       "t": "ensure_file",
+      "file": "/lib/svc/share/fs_include.sh",
+      "src": "live_fs_include.sh",
+      "owner": "root",
+      "group": "sys",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/method/live-fs-root-minimal",
+      "src": "live-fs-root-minimal",
+      "owner": "root",
+      "group": "sys",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
       "file": "/lib/svc/manifest/system/filesystem/root-fs-media.xml",
       "src": "filesystem-root-media.xml",
       "owner": "root",

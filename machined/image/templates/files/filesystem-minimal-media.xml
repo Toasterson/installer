@@ -39,7 +39,7 @@
         <exec_method
                 type='method'
                 name='start'
-                exec=':true'
+                exec='/lib/svc/method/live-fs-root-minimal'
                 timeout_seconds='0'
             />
 
