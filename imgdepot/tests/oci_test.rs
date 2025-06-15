@@ -200,3 +200,129 @@ async fn test_blob_operations() {
     // Shutdown the server
     server.abort();
 }
+
+#[tokio::test]
+async fn test_chunked_upload_with_oci_util() {
+    // Start the test server
+    let (_, port) = start_test_server().await;
+
+    // Create a registry client
+    let registry = Registry::new(
+        format!("http://localhost:{}", port),
+        None, // No auth for testing
+    );
+
+    // Create a session
+    let mut session = registry.new_session("test".to_string());
+    
+    // Create test content - make it large enough to ensure multiple chunks
+    let content = "test blob content".repeat(1000); // ~17KB of data
+    let content_bytes = content.as_bytes();
+    
+    let cursor = std::io::Cursor::new(content_bytes);
+    let descriptor = session.upload_content(None, "application/octet-stream".to_string(), cursor)
+        .await.unwrap();
+    
+    println!("{:?}", descriptor);
+    
+}
+
+#[tokio::test]
+async fn test_chunked_upload() {
+    // Start the test server
+    let (server, port) = start_test_server().await;
+
+    // First, let's verify the server is running by checking the API version
+    let version_response = reqwest::get(format!("http://localhost:{}/v2/", port))
+        .await
+        .unwrap();
+    assert_eq!(version_response.status().as_u16(), 200, "API version check failed");
+
+    // Create test content - make it large enough to ensure multiple chunks
+    let content = "test blob content".repeat(1000); // ~17KB of data
+    let content_bytes = content.as_bytes();
+
+    // Start upload using the same approach as test_blob_operations
+    let client = reqwest::Client::new();
+    let start_response = client.post(format!("http://localhost:{}/v2/test/blobs/uploads/", port))
+        .send()
+        .await
+        .unwrap();
+
+    // If the response is not successful, print the response body to help debug
+    let status = start_response.status().as_u16();
+    if status != 202 {
+        let error_body = start_response.text().await.unwrap();
+        println!("Error response body: {}", error_body);
+        panic!("Failed to start upload: status {}", status);
+    }
+
+    // Get the upload location
+    let location = start_response.headers().get("location").unwrap().to_str().unwrap();
+    let upload_url = format!("http://localhost:{}{}", port, location);
+
+    println!("Upload URL: {}", upload_url);
+
+    // Calculate digest for verification
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content_bytes);
+    let expected_digest = format!("sha256:{}", hex::encode(hasher.finalize()));
+
+    // Upload chunks manually to simulate what upload_content does
+    let chunk_size = 4096; // 4KB chunks
+    let mut offset = 0;
+
+    while offset < content_bytes.len() {
+        let end = std::cmp::min(offset + chunk_size, content_bytes.len());
+        let chunk = &content_bytes[offset..end];
+
+        // Upload chunk
+        let chunk_response = client.patch(&upload_url)
+            .header("Content-Type", "application/octet-stream")
+            .header("Content-Length", chunk.len())
+            .header("Range", format!("{}-{}", offset, end - 1))
+            .body(chunk.to_vec())
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(chunk_response.status().as_u16(), 202, "Failed to upload chunk: {:?}", chunk_response);
+
+        offset = end;
+    }
+
+    // Complete the upload
+    let complete_url = format!("{}?digest={}", upload_url, expected_digest);
+    let complete_response = client.put(complete_url)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(complete_response.status().as_u16(), 201, "Failed to complete upload: {:?}", complete_response);
+
+    // Verify the upload was successful by checking the blob exists
+    let check_response = client.head(format!("http://localhost:{}/v2/test/blobs/{}", port, expected_digest))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(check_response.status().as_u16(), 200, "Blob not found: {:?}", check_response);
+
+    // Fetch the blob and verify its content
+    let get_response = client.get(format!("http://localhost:{}/v2/test/blobs/{}", port, expected_digest))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(get_response.status().as_u16(), 200, "Failed to get blob: {:?}", get_response);
+
+    let downloaded_content = get_response.bytes().await.unwrap();
+    assert_eq!(downloaded_content.len(), content_bytes.len(), "Downloaded content size should match original");
+    assert_eq!(downloaded_content, content_bytes, "Downloaded content should match original");
+
+    println!("Chunked upload test completed successfully!");
+
+    // Shutdown the server
+    server.abort();
+}
