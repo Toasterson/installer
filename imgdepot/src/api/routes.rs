@@ -384,7 +384,7 @@ async fn start_upload(
 // Get upload status
 #[instrument(name = "get_upload_status", skip(metrics), fields(repository = %name, uuid = %uuid))]
 async fn get_upload_status(
-    State((_storage, metrics)): State<AppState>,
+    State((storage, metrics)): State<AppState>,
     Path((name, uuid)): Path<(String, String)>,
 ) -> Result<Response> {
     // Increment request counter
@@ -392,17 +392,24 @@ async fn get_upload_status(
 
     info!("Checking upload status: {}/{}", name, uuid);
 
-    //storage.
+    // Get the upload status
+    let status = storage.get_upload_status(&name, &uuid).await?;
 
     let mut response = Response::new(());
     let headers = response.headers_mut();
 
     headers.insert(header::LOCATION, format!("/v2/{}/blobs/uploads/{}", name, uuid).parse().unwrap());
-    headers.insert(header::RANGE, "0-0".parse().unwrap());
+
+    // Return the current range of uploaded bytes
+    if status.size > 0 {
+        headers.insert(header::RANGE, format!("0-{}", status.size - 1).parse().unwrap());
+    } else {
+        headers.insert(header::RANGE, "0-0".parse().unwrap());
+    }
 
     *response.status_mut() = StatusCode::ACCEPTED;
 
-    info!("Upload status: {}/{} is in progress", name, uuid);
+    info!("Upload status: {}/{} is in progress, size: {} bytes", name, uuid, status.size);
 
     Ok(empty_response_to_body(response))
 }
@@ -410,7 +417,7 @@ async fn get_upload_status(
 // Upload blob chunk
 #[instrument(name = "upload_chunk", skip(body, metrics), fields(repository = %name, uuid = %uuid))]
 async fn upload_chunk(
-    State((_storage, metrics)): State<AppState>,
+    State((storage, metrics)): State<AppState>,
     Path((name, uuid)): Path<(String, String)>,
     body: Bytes,
 ) -> Result<Response> {
@@ -420,18 +427,18 @@ async fn upload_chunk(
     let body_size = body.len();
     info!("Uploading chunk: {}/{}, size: {} bytes", name, uuid, body_size);
 
-    //TODO if we want to get compliant. we implement this function here
-    // For our own use cases monolithic upload works
+    // Upload the chunk and get the new total size
+    let total_size = storage.upload_chunk(&name, &uuid, body).await?;
 
     let mut response = Response::new(());
     let headers_map = response.headers_mut();
 
     headers_map.insert(header::LOCATION, format!("/v2/{}/blobs/uploads/{}", name, uuid).parse().unwrap());
-    headers_map.insert(header::RANGE, format!("0-{}", body_size).parse().unwrap());
+    headers_map.insert(header::RANGE, format!("0-{}", total_size - 1).parse().unwrap());
 
     *response.status_mut() = StatusCode::ACCEPTED;
 
-    info!("Chunk uploaded: {}/{}, size: {} bytes", name, uuid, body_size);
+    info!("Chunk uploaded: {}/{}, total size: {} bytes", name, uuid, total_size);
 
     Ok(empty_response_to_body(response))
 }
@@ -447,20 +454,29 @@ async fn complete_upload(
     // Increment request counter
     metrics.request_counter.add(1, &[]);
 
-    // Get the digest from query parameters
-    let digest = params.digest.ok_or_else(|| AppError::BadRequest("Missing digest parameter".to_string()))?;
+    // Get the digest from query parameters (optional)
+    let expected_digest = params.digest.as_deref();
 
     let body_size = body.len();
-    info!("Completing upload: {}/{}, uuid: {}, digest: {}, size: {} bytes", 
-          name, digest, uuid, digest, body_size);
+    info!("Completing upload: {}/{}, uuid: {}, expected digest: {:?}, final chunk size: {} bytes", 
+          name, expected_digest.unwrap_or("unknown"), uuid, expected_digest, body_size);
+
+    // If there's a final chunk, upload it first
+    if body_size > 0 {
+        storage.upload_chunk(&name, &uuid, body).await?;
+    }
+
+    // Complete the upload and get the calculated digest
+    let digest = storage.complete_upload(&name, &uuid, expected_digest).await?;
+
+    // Get the size of the blob for metrics
+    let blob_size = storage.get_blob_size(&digest).await?;
 
     // Record blob size in histogram
-    metrics.blob_size_histogram.record(body_size as f64, &[]);
+    metrics.blob_size_histogram.record(blob_size as f64, &[]);
 
-    // Store the blob
-    storage.put_blob(&digest, body).await?;
-
-    info!("Completed upload: {}/{}, uuid: {}, digest: {}", name, digest, uuid, digest);
+    info!("Completed upload: {}/{}, uuid: {}, digest: {}, size: {} bytes", 
+          name, digest, uuid, digest, blob_size);
 
     // Build response
     let mut response = Response::new(());
@@ -477,7 +493,7 @@ async fn complete_upload(
 // Cancel upload
 #[instrument(name = "cancel_upload", skip(metrics), fields(repository = %name, uuid = %uuid))]
 async fn cancel_upload(
-    State((_storage, metrics)): State<AppState>,
+    State((storage, metrics)): State<AppState>,
     Path((name, uuid)): Path<(String, String)>,
 ) -> Result<StatusCode> {
     // Increment request counter
@@ -485,8 +501,8 @@ async fn cancel_upload(
 
     info!("Cancelling upload: {}/{}", name, uuid);
 
-    // In a real implementation, we would delete the upload
-    // For simplicity, we'll just return a success response
+    // Cancel the upload and clean up temporary files
+    storage.cancel_upload(&name, &uuid).await?;
 
     info!("Upload cancelled: {}/{}", name, uuid);
 
