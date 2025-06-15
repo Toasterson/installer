@@ -1,0 +1,4 @@
+# Default configuration for imgdepot
+
+# Server port
+port = 8080

@@ -1,0 +1,8 @@
+# Development environment configuration for imgdepot
+
+# Storage configuration
+[storage]
+# Use filesystem storage for development
+backend = "fs"
+# Store data in the ./data directory
+fs_root = "./data"

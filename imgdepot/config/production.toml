@@ -1,0 +1,15 @@
+# Production environment configuration for imgdepot
+
+# Storage configuration
+[storage]
+# Use S3 storage for production
+backend = "s3"
+# S3 bucket name (replace with your actual bucket name)
+s3_bucket = "imgdepot"
+# S3 region (replace with your actual region)
+s3_region = "us-east-1"
+# Optional: S3 endpoint (uncomment and set if using a custom S3 endpoint)
+# s3_endpoint = "https://s3.example.com"
+# Optional: S3 credentials (can also be set via environment variables)
+# s3_access_key = "your-access-key"
+# s3_secret_key = "your-secret-key"

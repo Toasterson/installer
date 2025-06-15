@@ -1,0 +1,38 @@
+[package]
+name = "imgdepot"
+version = "0.1.0"
+edition = "2024"
+description = "OCI Distribution Spec compliant image registry"
+
+[[bin]]
+name = "imgdepotd"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1.36.0", features = ["full"] }
+opendal = { version = "0.45.1", features = ["services-s3", "services-fs"] }
+tower = "0.4.13"
+tower-http = { version = "0.5.1", features = ["trace", "cors"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.114"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "registry"] }
+opentelemetry = { version = "0.21" }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.14", features = ["http-proto", "metrics", "grpc-tonic"] }
+tracing-opentelemetry = "0.22"
+opentelemetry-prometheus = "0.14"
+prometheus = "0.13"
+sha2 = "0.10.8"
+hex = "0.4.3"
+bytes = "1.5.0"
+thiserror = "1.0.57"
+anyhow = "1.0.80"
+async-trait = "0.1.77"
+uuid = { version = "1.7.0", features = ["v4"] }
+config = "0.14.0"
+
+[dev-dependencies]
+oci_util = { git = "https://github.com/michael-yuji/xc.git" }
+reqwest = { version = "0.11", features = ["json"] }
