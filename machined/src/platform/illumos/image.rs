@@ -2,11 +2,11 @@ use crate::error::InstallationError;
 use crate::error::InstallationError::CannotCreateImageReference;
 use crate::machined::InstallProgress;
 use crate::util::{report_install_debug, report_install_error, report_install_info};
-use oci_util::digest::OciDigest;
-use oci_util::distribution::client::{Registry, Session};
-use oci_util::image_reference::ImageReference;
-use oci_util::models::ManifestVariant::{Artifact, List, Manifest};
-use oci_util::models::{AnyOciConfig, ImageManifest, ImageManifestList};
+use ociclient::digest::OciDigest;
+use ociclient::client::{Client as Registry, ClientSession as Session};
+use ociclient::image_reference::ImageReference;
+use ociclient::models::ManifestVariant::{Artifact, List, Manifest};
+use ociclient::models::{AnyOciConfig, ImageManifest, ImageManifestList};
 use std::env;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
@@ -63,20 +63,21 @@ async fn select_correct_manifest(
 ) -> Result<AnyOciConfig, InstallationError> {
     let cur_os_arch = format!("{}/{}", env::consts::OS, std::env::consts::ARCH);
     for manifest in list.manifests.iter() {
-        let plat = manifest.platform.clone();
-        let m_os_arch = format!("{}/{}", plat.os, plat.architecture);
-        if m_os_arch == cur_os_arch {
-            tx.send(report_install_debug(
-                format!("selecting {} to install", manifest.digest.as_str()).as_str(),
-            ))
-            .await
-            .map_err(|_e| InstallationError::SendFailed)?;
+        if let Some(plat) = &manifest.platform {
+            let m_os_arch = format!("{}/{}", plat.os, plat.architecture);
+            if m_os_arch == cur_os_arch {
+                tx.send(report_install_debug(
+                    format!("selecting {} to install", manifest.digest.as_str()).as_str(),
+                ))
+                .await
+                .map_err(|_e| InstallationError::SendFailed)?;
 
-            let resp = session
-                .fetch_blob_as::<ImageManifest>(&manifest.digest)
-                .await?;
-            let manifest = resp.ok_or(InstallationError::NoManifestFound)?;
-            return fetch_manifest(manifest, session, tx, local_image_path).await;
+                let resp = session
+                    .fetch_blob_as::<ImageManifest>(&manifest.digest)
+                    .await?;
+                let manifest = resp.ok_or(InstallationError::NoManifestFound)?;
+                return fetch_manifest(manifest, session, tx, local_image_path).await;
+            }
         }
     }
     Err(InstallationError::NoManifestMatchesArch(cur_os_arch))

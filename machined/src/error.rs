@@ -1,6 +1,6 @@
 use crate::machined::InstallProgress;
 use jwt_simple::reexports::serde_json;
-use oci_util::distribution::client::ClientError;
+use ociclient::client::ClientError;
 use std::io;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;

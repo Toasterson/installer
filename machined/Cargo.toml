@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 miette = { version = "7.4.0", features = ["fancy"] }
-oci_util = { version = "*", git = "https://github.com/michael-yuji/xc" }
+ociclient = { version = "0.1.0", path = "../ociclient" }
 machineconfig = { version = "0.1.0", path = "../machineconfig" }
 knus = "3.2.0"
 thiserror = "2.0.9"
