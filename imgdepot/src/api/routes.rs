@@ -4,6 +4,7 @@ use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, head, put, delete, post, patch},
     Json, Router,
@@ -42,10 +43,20 @@ pub struct TagsQuery {
 
 // Create the main router for the registry API
 pub fn registry_router(state: AppState) -> Router<AppState> {
-    Router::new()
-        // API Version Check
+    // Import the auth module
+    use super::auth::{auth_middleware, token_handler};
+
+    // Create a router for the token endpoint (no auth required)
+    let token_router = Router::new()
+        .route("/token", get(token_handler))
+        .with_state(state.clone());
+
+    // Create the main router with authentication middleware
+    let registry_router = Router::new()
+        // API Version Check (no auth required)
         .route("/v2/", get(api_version_check))
 
+        // Protected routes
         // Catalog operations
         .route("/v2/_catalog", get(list_repositories))
 
@@ -69,7 +80,11 @@ pub fn registry_router(state: AppState) -> Router<AppState> {
         .route("/v2/{name}/blobs/uploads/{uuid}", patch(upload_chunk))
         .route("/v2/{name}/blobs/uploads/{uuid}", put(complete_upload))
         .route("/v2/{name}/blobs/uploads/{uuid}", delete(cancel_upload))
-        .with_state(state)
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .with_state(state);
+
+    // Merge the routers
+    token_router.merge(registry_router)
 }
 
 // API Version Check

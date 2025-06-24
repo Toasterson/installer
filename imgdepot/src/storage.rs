@@ -67,7 +67,7 @@ impl Storage {
 
     pub async fn start_upload(&self, name: &str, uuid: &str) -> Result<()> {
         let path = format!("uploads/{name}/{uuid}-status.json");
-        let chunks_path = format!("uploads/{name}/{uuid}/chunks");
+        let chunks_path = format!("uploads/{name}/{uuid}/chunks/");  // Add trailing slash
         let upload = UploadStatus { 
             name: name.to_string(), 
             uuid: uuid.to_string(),

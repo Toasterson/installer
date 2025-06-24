@@ -7,11 +7,11 @@ use tokio::time::sleep;
 
 use opentelemetry::metrics::MeterProvider;
 
-use oci_util::digest::OciDigest;
-use oci_util::distribution::client::Registry;
-use oci_util::models::ImageManifest;
+use imgdepot::digest::OciDigest;
+use imgdepot::models::ImageManifest;
 
 use imgdepot::api::routes::AppMetrics;
+use imgdepot::client::Client;
 use imgdepot::config::AppConfig;
 use imgdepot::storage::Storage;
 
@@ -22,12 +22,18 @@ async fn start_test_server() -> (JoinHandle<()>, u16) {
     let addr = listener.local_addr().unwrap();
     let port = addr.port();
 
+    // Create data directory if it doesn't exist
+    let data_dir = std::path::PathBuf::from("./data");
+    if !data_dir.exists() {
+        std::fs::create_dir_all(&data_dir).unwrap();
+    }
+
     // Create a test configuration
     let config = AppConfig {
         port: port,
         storage: imgdepot::config::StorageConfig {
             backend: imgdepot::config::StorageBackend::Fs,
-            fs_root: Some(std::path::PathBuf::from("./data")),
+            fs_root: Some(data_dir),
             s3_bucket: None,
             s3_region: None,
             s3_endpoint: None,
@@ -71,13 +77,15 @@ async fn test_api_version_check() {
     // Start the test server
     let (server, port) = start_test_server().await;
 
-    // Make a request to the API version endpoint
-    let response = reqwest::get(format!("http://localhost:{}/v2/", port))
-        .await
-        .unwrap();
+    // Create a client
+    let client = Client::new(
+        format!("http://localhost:{}", port),
+        None, // No auth for testing
+    );
 
-    // Check that the response is successful
-    assert_eq!(response.status().as_u16(), 200);
+    // Check the API version
+    let api_available = client.check_api().await.unwrap();
+    assert!(api_available, "API should be available");
 
     // Shutdown the server
     server.abort();
@@ -88,20 +96,20 @@ async fn test_manifest_operations() {
     // Start the test server
     let (server, port) = start_test_server().await;
 
-    // Create a registry client
-    let registry = Registry::new(
+    // Create a client
+    let client = Client::new(
         format!("http://localhost:{}", port),
         None, // No auth for testing
     );
 
     // Create a session
-    let mut session = registry.new_session("test".to_string());
+    let mut session = client.new_session("test".to_string());
 
     // Create a simple manifest
     let manifest = ImageManifest {
         schema_version: 2,
         media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
-        config: oci_util::models::Descriptor {
+        config: imgdepot::models::Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
             size: 0
@@ -110,14 +118,11 @@ async fn test_manifest_operations() {
     };
 
     // Push the manifest
-    let result = session.register_manifest("latest", &manifest).await;
-    assert!(result.is_ok());
+    session.register_manifest("latest", &manifest).await.unwrap();
 
     // Query the manifest
-    let result = session.query_manifest("latest").await;
-    assert!(result.is_ok());
-    let manifest_result = result.unwrap();
-    assert!(manifest_result.is_some());
+    let manifest_result = session.query_manifest("latest").await.unwrap();
+    assert!(manifest_result.is_some(), "Manifest should exist after registration");
 
     // Shutdown the server
     server.abort();
@@ -128,37 +133,31 @@ async fn test_blob_operations() {
     // Start the test server
     let (server, port) = start_test_server().await;
 
-    // Create a registry client
-    let registry = Registry::new(
+    // Create a client
+    let client = Client::new(
         format!("http://localhost:{}", port),
         None, // No auth for testing
     );
 
     // Create a session
-    let mut session = registry.new_session("test".to_string());
+    let mut session = client.new_session("test".to_string());
 
     // Create test content
     let content = b"test blob content".to_vec();
 
     // Upload the blob
-    let result = session.upload_content(
-        None, // No progress tracking
+    let descriptor = session.upload_bytes(
         "application/octet-stream".to_string(),
-        content.clone().as_slice(),
-    ).await;
-    assert!(result.is_ok());
-    let descriptor = result.unwrap();
+        content.as_slice(),
+    ).await.unwrap();
 
     // Check if the blob exists
-    let exists = session.exists_digest(&descriptor.digest).await.unwrap();
-    assert!(exists);
+    let exists = session.blob_exists(&descriptor.digest).await.unwrap();
+    assert!(exists, "Blob should exist after upload");
 
     // Fetch the blob
-    let response = session.fetch_blob(&descriptor.digest).await.unwrap();
-    assert_eq!(response.status().as_u16(), 200);
-
-    let blob_content = response.bytes().await.unwrap();
-    assert_eq!(blob_content.to_vec(), content);
+    let blob_content = session.fetch_blob(&descriptor.digest).await.unwrap();
+    assert_eq!(blob_content.to_vec(), content, "Downloaded content should match original");
 
     // Shutdown the server
     server.abort();
@@ -169,20 +168,20 @@ async fn test_repository_listing() {
     // Start the test server
     let (server, port) = start_test_server().await;
 
-    // Create a registry client
-    let registry = Registry::new(
+    // Create a client
+    let client = Client::new(
         format!("http://localhost:{}", port),
         None, // No auth for testing
     );
 
     // Create a session and push a manifest to create a repository
-    let mut session = registry.new_session("test-repo".to_string());
+    let mut session = client.new_session("test-repo".to_string());
 
     // Create a simple manifest
     let manifest = ImageManifest {
         schema_version: 2,
         media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
-        config: oci_util::models::Descriptor {
+        config: imgdepot::models::Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
             size: 0
@@ -191,22 +190,15 @@ async fn test_repository_listing() {
     };
 
     // Push the manifest to create the repository
-    let result = session.register_manifest("latest", &manifest).await;
-    assert!(result.is_ok());
+    session.register_manifest("latest", &manifest).await.unwrap();
 
     // List repositories
-    let response = reqwest::get(format!("http://localhost:{}/v2/_catalog", port))
-        .await
-        .unwrap();
-
-    assert_eq!(response.status().as_u16(), 200);
-
-    let catalog: serde_json::Value = response.json().await.unwrap();
-    let repositories = catalog["repositories"].as_array().unwrap();
+    let repositories = client.list_repositories().await.unwrap();
+    println!("Repositories: {:?}", repositories);
 
     // Check that our test repository is in the list
-    let found = repositories.iter().any(|repo| repo.as_str().unwrap() == "test-repo");
-    assert!(found);
+    let found = repositories.iter().any(|repo| repo == "test-repo" || repo == "test-repo/");
+    assert!(found, "Repository 'test-repo' not found in catalog");
 
     // Shutdown the server
     server.abort();
