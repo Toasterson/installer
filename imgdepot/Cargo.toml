@@ -37,5 +37,6 @@ time = "0.3.34"
 chrono = "0.4.35"
 base64 = "0.21.7"
 ociclient = { path = "../ociclient" }
+reqwest = "0.11.27"
 
 [dev-dependencies]

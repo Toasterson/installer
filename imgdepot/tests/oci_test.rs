@@ -129,12 +129,14 @@ async fn test_blob_operations() {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: descriptor.digest.clone(),
             size: content.len(),
+            platform: None,
         },
         layers: vec![
             Descriptor {
                 media_type: "application/vnd.oci.image.layer.v1.tar".to_string(),
                 digest: descriptor.digest.clone(),
                 size: content.len(),
+                platform: None,
             },
         ],
     };

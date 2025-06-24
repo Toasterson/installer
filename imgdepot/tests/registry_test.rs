@@ -110,7 +110,8 @@ async fn test_manifest_operations() {
         config: Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
-            size: 0
+            size: 0,
+            platform: None,
         },
         layers: vec![]
     };
@@ -182,7 +183,8 @@ async fn test_repository_listing() {
         config: Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
-            size: 0
+            size: 0,
+            platform: None,
         },
         layers: vec![]
     };
