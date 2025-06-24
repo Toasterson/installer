@@ -1,13 +1,43 @@
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::str::FromStr;
 
 use crate::digest::OciDigest;
-use crate::models::{Descriptor, ImageManifest};
+use crate::models::{ArtifactManifest, Descriptor, ImageManifest, ImageManifestList, ManifestVariant};
 use anyhow::Result;
 use bytes::Bytes;
 use reqwest::{header, Client as ReqwestClient, StatusCode};
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
+use thiserror::Error;
+
+/// Error type for OCI client operations
+#[derive(Debug, Error)]
+pub enum ClientError {
+    #[error("HTTP error: {0}")]
+    HttpError(String),
+    #[error("Authentication error: {0}")]
+    AuthError(String),
+    #[error("Manifest error: {0}")]
+    ManifestError(String),
+    #[error("Blob error: {0}")]
+    BlobError(String),
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("JSON error: {0}")]
+    JsonError(#[from] serde_json::Error),
+    #[error("Request error: {0}")]
+    RequestError(#[from] reqwest::Error),
+    #[error("Other error: {0}")]
+    Other(String),
+}
+
+impl From<anyhow::Error> for ClientError {
+    fn from(err: anyhow::Error) -> Self {
+        ClientError::Other(err.to_string())
+    }
+}
 
 /// A client for interacting with an OCI registry.
 pub struct Client {
@@ -417,6 +447,7 @@ impl ClientSession {
             media_type,
             digest: OciDigest::from_str(&digest)?,
             size: content.len(),
+            platform: None,
         })
     }
 
@@ -437,6 +468,53 @@ impl ClientSession {
         }
 
         Ok(response.bytes().await?)
+    }
+
+    /// Fetch a blob as a specific type.
+    pub async fn fetch_blob_as<T: DeserializeOwned>(&mut self, digest: &OciDigest) -> Result<Option<T>> {
+        let url = format!("{}/v2/{}/blobs/{}", self.registry_url, self.repository, digest);
+        let response = self.authenticated_get(&url).await?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        if response.status() != StatusCode::OK {
+            return Err(anyhow::anyhow!("Failed to fetch blob: {}", response.status()));
+        }
+
+        let content = response.json().await?;
+        Ok(Some(content))
+    }
+
+    /// Download a blob to a file.
+    pub async fn download_blob(&mut self, digest: &OciDigest, path: &Path, overwrite: bool) -> Result<()> {
+        // Check if the file already exists and we're not overwriting
+        if path.exists() && !overwrite {
+            return Ok(());
+        }
+
+        // Create parent directories if they don't exist
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent)?;
+            }
+        }
+
+        // Fetch the blob
+        let url = format!("{}/v2/{}/blobs/{}", self.registry_url, self.repository, digest);
+        let response = self.authenticated_get(&url).await?;
+
+        if response.status() != StatusCode::OK {
+            return Err(anyhow::anyhow!("Failed to fetch blob: {}", response.status()));
+        }
+
+        // Write the blob to the file
+        let bytes = response.bytes().await?;
+        let mut file = File::create(path)?;
+        file.write_all(&bytes)?;
+
+        Ok(())
     }
 
     /// Register a manifest with the given reference.
@@ -481,12 +559,12 @@ impl ClientSession {
     pub async fn query_manifest(
         &mut self,
         reference: &str,
-    ) -> Result<Option<ImageManifest>> {
+    ) -> Result<Option<ManifestVariant>> {
         let url = format!("{}/v2/{}/manifests/{}", self.registry_url, self.repository, reference);
 
-        // Create the request with the appropriate Accept header
+        // Create the request with the appropriate Accept headers for all manifest types
         let mut request = self.client.request(reqwest::Method::GET, &url)
-            .header("Accept", "application/vnd.oci.image.manifest.v1+json");
+            .header("Accept", "application/vnd.oci.image.manifest.v1+json,application/vnd.oci.image.index.v1+json,application/vnd.oci.artifact.manifest.v1+json");
 
         // Add authentication
         if let Some(token) = &self.token {
@@ -513,7 +591,47 @@ impl ClientSession {
             return Err(anyhow::anyhow!("Failed to query manifest: {}", final_response.status()));
         }
 
-        let manifest = final_response.json().await?;
+        // Get the content type to determine the manifest type
+        let content_type = final_response
+            .headers()
+            .get("Content-Type")
+            .map(|h| h.to_str().unwrap_or(""))
+            .unwrap_or("");
+
+        // Parse the manifest based on the content type
+        if content_type.contains("application/vnd.oci.image.manifest.v1+json") {
+            let manifest: ImageManifest = final_response.json().await?;
+            Ok(Some(ManifestVariant::Manifest(manifest)))
+        } else if content_type.contains("application/vnd.oci.image.index.v1+json") {
+            let manifest_list: ImageManifestList = final_response.json().await?;
+            Ok(Some(ManifestVariant::List(manifest_list)))
+        } else if content_type.contains("application/vnd.oci.artifact.manifest.v1+json") {
+            let artifact: ArtifactManifest = final_response.json().await?;
+            Ok(Some(ManifestVariant::Artifact(artifact)))
+        } else {
+            // Try to parse as a standard image manifest as a fallback
+            let manifest: ImageManifest = final_response.json().await?;
+            Ok(Some(ManifestVariant::Manifest(manifest)))
+        }
+    }
+
+    /// Query a manifest as a specific type.
+    pub async fn query_manifest_as<T: DeserializeOwned>(
+        &mut self,
+        reference: &str,
+    ) -> Result<Option<T>> {
+        let url = format!("{}/v2/{}/manifests/{}", self.registry_url, self.repository, reference);
+        let response = self.authenticated_get(&url).await?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        if response.status() != StatusCode::OK {
+            return Err(anyhow::anyhow!("Failed to query manifest: {}", response.status()));
+        }
+
+        let manifest = response.json().await?;
         Ok(Some(manifest))
     }
 
@@ -602,6 +720,7 @@ impl ClientSession {
             media_type,
             digest: OciDigest::from_str(&expected_digest)?,
             size: content.len(),
+            platform: None,
         })
     }
 

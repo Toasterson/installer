@@ -34,6 +34,11 @@ impl OciDigest {
     pub fn hex(&self) -> &str {
         &self.hex
     }
+
+    /// Get the full digest as a string
+    pub fn as_str(&self) -> String {
+        self.to_string()
+    }
 }
 
 impl fmt::Display for OciDigest {

@@ -7,7 +7,7 @@ use tokio::time::sleep;
 use opentelemetry::metrics::MeterProvider;
 
 use imgdepot::api::routes::AppMetrics;
-use imgdepot::client::Client;
+use imgdepot::ociclient::{Client, models::{ImageManifest, Descriptor}};
 use imgdepot::config::AppConfig;
 use imgdepot::storage::Storage;
 
@@ -122,16 +122,16 @@ async fn test_blob_operations() {
     assert_eq!(blob_content.to_vec(), content.to_vec(), "Downloaded content should match original");
 
     // Create a simple manifest that references the blob
-    let manifest = imgdepot::models::ImageManifest {
+    let manifest = ImageManifest {
         schema_version: 2,
         media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
-        config: imgdepot::models::Descriptor {
+        config: Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: descriptor.digest.clone(),
             size: content.len(),
         },
         layers: vec![
-            imgdepot::models::Descriptor {
+            Descriptor {
                 media_type: "application/vnd.oci.image.layer.v1.tar".to_string(),
                 digest: descriptor.digest.clone(),
                 size: content.len(),

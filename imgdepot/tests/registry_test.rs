@@ -7,11 +7,9 @@ use tokio::time::sleep;
 
 use opentelemetry::metrics::MeterProvider;
 
-use imgdepot::digest::OciDigest;
-use imgdepot::models::ImageManifest;
+use imgdepot::ociclient::{Client, OciDigest, models::{ImageManifest, Descriptor}};
 
 use imgdepot::api::routes::AppMetrics;
-use imgdepot::client::Client;
 use imgdepot::config::AppConfig;
 use imgdepot::storage::Storage;
 
@@ -109,7 +107,7 @@ async fn test_manifest_operations() {
     let manifest = ImageManifest {
         schema_version: 2,
         media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
-        config: imgdepot::models::Descriptor {
+        config: Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
             size: 0
@@ -181,7 +179,7 @@ async fn test_repository_listing() {
     let manifest = ImageManifest {
         schema_version: 2,
         media_type: "application/vnd.oci.image.manifest.v1+json".to_string(),
-        config: imgdepot::models::Descriptor {
+        config: Descriptor {
             media_type: "application/vnd.oci.image.config.v1+json".to_string(),
             digest: OciDigest::from_str("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855").unwrap(),
             size: 0
