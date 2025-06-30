@@ -17,6 +17,7 @@ use url::Url;
 
 mod machined;
 mod state;
+mod usb;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
@@ -42,6 +43,22 @@ pub enum Error {
     NoParentDir,
     #[error("Please provide a servername none can be inferred")]
     ServerNameCannotBeInferred,
+    #[error("Failed to create FAT32 partition: {0}")]
+    PartitionError(String),
+    #[error("Failed to download file: {0}")]
+    DownloadError(#[from] reqwest::Error),
+    #[error("Failed to download file: {0}")]
+    DownloadCodeError(String),
+    #[error("Failed to extract archive: {0}")]
+    ArchiveError(String),
+    #[error("Failed to find required tool: {0}")]
+    ToolNotFound(String),
+    #[error("Failed to execute command: {0}")]
+    CommandError(String),
+    #[error("Failed to download OCI image: {0}")]
+    OciError(String),
+    #[error(transparent)]
+    AnyhowError(#[from] anyhow::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -63,6 +80,27 @@ enum Commands {
         name: String,
         #[arg(short, long)]
         config: PathBuf,
+    },
+    /// Create a bootable USB stick with EFI boot files
+    CreateBootableUsb {
+        /// Path to the USB device (e.g., /dev/sdb on Linux, disk2 on macOS)
+        device: String,
+
+        /// URL to download boot files from (tar archive)
+        #[arg(short, long)]
+        boot_files_url: String,
+
+        /// Optional OCI image to download to the USB stick
+        #[arg(short, long)]
+        oci_image: Option<String>,
+
+        /// Optional size of the FAT32 partition in GB (default: 4)
+        #[arg(short, long, default_value = "4")]
+        size: u64,
+
+        /// Optional additional assets URL
+        #[arg(short, long)]
+        assets_url: Option<String>,
     },
 }
 
@@ -112,6 +150,22 @@ async fn main() -> Result<()> {
                 let progress = stream_resp?;
                 println!("{}: {:?}", progress.level, progress.message);
             }
+        }
+        Commands::CreateBootableUsb { 
+            device, 
+            boot_files_url, 
+            oci_image, 
+            size, 
+            assets_url 
+        } => {
+            println!("Creating bootable USB stick on device: {}", device);
+            usb::create_bootable_usb(
+                &device,
+                &boot_files_url,
+                oci_image.as_deref(),
+                size,
+                assets_url.as_deref()
+            ).await?;
         }
     }
 
