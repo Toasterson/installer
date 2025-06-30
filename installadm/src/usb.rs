@@ -4,7 +4,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use ociclient::{Client as OciClient, ImageReference, ManifestVariant};
 use reqwest::Client;
 use std::fs::{self, File};
-use std::io::{Write, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
@@ -124,7 +124,10 @@ fn ensure_device_exists(device_path: &str, size_gb: u64) -> Result<(), Error> {
 
     // Check if the path exists
     if !path.exists() {
-        println!("Device path does not exist. Creating empty file: {}", device_path);
+        println!(
+            "Device path does not exist. Creating empty file: {}",
+            device_path
+        );
 
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent() {
@@ -138,10 +141,14 @@ fn ensure_device_exists(device_path: &str, size_gb: u64) -> Result<(), Error> {
         let mut file = File::create(path).map_err(|e| Error::IoError(e))?;
 
         // Set the file size by seeking to the desired size and writing a byte
-        file.seek(SeekFrom::Start(file_size - 1)).map_err(|e| Error::IoError(e))?;
+        file.seek(SeekFrom::Start(file_size - 1))
+            .map_err(|e| Error::IoError(e))?;
         file.write_all(&[0]).map_err(|e| Error::IoError(e))?;
 
-        println!("Created empty file of size {}GB at {}", size_gb, device_path);
+        println!(
+            "Created empty file of size {}GB at {}",
+            size_gb, device_path
+        );
     }
 
     Ok(())
@@ -161,25 +168,29 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
             .map_err(|e| Error::CommandError(format!("Failed to create partition table: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to create partition table".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to create partition table".to_string(),
+            ));
         }
 
         // Create partition
         let status = Command::new(DISK_UTIL)
             .args([
-                "--script", 
-                device, 
-                "mkpart", 
-                "primary", 
-                "fat32", 
-                "1MiB", 
-                &format!("{}GiB", size_gb)
+                "--script",
+                device,
+                "mkpart",
+                "primary",
+                "fat32",
+                "1MiB",
+                &format!("{}GiB", size_gb),
             ])
             .status()
             .map_err(|e| Error::CommandError(format!("Failed to create partition: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to create partition".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to create partition".to_string(),
+            ));
         }
 
         // Set boot flag
@@ -200,7 +211,9 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
             .map_err(|e| Error::CommandError(format!("Failed to format partition: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to format partition".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to format partition".to_string(),
+            ));
         }
     }
 
@@ -214,18 +227,20 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
         // Partition disk
         let status = Command::new(DISK_UTIL)
             .args([
-                "partitionDisk", 
-                device, 
-                "GPT", 
-                "FAT32", 
-                "EFI", 
-                &format!("{}g", size_gb)
+                "partitionDisk",
+                device,
+                "GPT",
+                "FAT32",
+                "EFI",
+                &format!("{}g", size_gb),
             ])
             .status()
             .map_err(|e| Error::CommandError(format!("Failed to partition disk: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to partition disk".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to partition disk".to_string(),
+            ));
         }
     }
 
@@ -237,7 +252,8 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
         let mut script = File::create(&script_path).map_err(|e| Error::IoError(e))?;
 
         // Extract disk number from device path
-        let disk_num = device.trim_start_matches(DEVICE_PREFIX)
+        let disk_num = device
+            .trim_start_matches(DEVICE_PREFIX)
             .trim_start_matches("PHYSICALDRIVE")
             .parse::<u32>()
             .map_err(|_| Error::PartitionError("Invalid device path".to_string()))?;
@@ -246,7 +262,8 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
         writeln!(script, "select disk {}", disk_num).map_err(|e| Error::IoError(e))?;
         writeln!(script, "clean").map_err(|e| Error::IoError(e))?;
         writeln!(script, "convert gpt").map_err(|e| Error::IoError(e))?;
-        writeln!(script, "create partition primary size={}", size_gb * 1024).map_err(|e| Error::IoError(e))?;
+        writeln!(script, "create partition primary size={}", size_gb * 1024)
+            .map_err(|e| Error::IoError(e))?;
         writeln!(script, "format quick fs=fat32 label=EFI").map_err(|e| Error::IoError(e))?;
         writeln!(script, "assign letter=Z").map_err(|e| Error::IoError(e))?;
         writeln!(script, "exit").map_err(|e| Error::IoError(e))?;
@@ -258,7 +275,9 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
             .map_err(|e| Error::CommandError(format!("Failed to run diskpart: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to partition disk".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to partition disk".to_string(),
+            ));
         }
     }
 
@@ -271,7 +290,9 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
             .map_err(|e| Error::CommandError(format!("Failed to partition disk: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to partition disk".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to partition disk".to_string(),
+            ));
         }
 
         // Format partition
@@ -282,7 +303,9 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
             .map_err(|e| Error::CommandError(format!("Failed to format partition: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to format partition".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to format partition".to_string(),
+            ));
         }
     }
 
@@ -306,7 +329,9 @@ fn get_mount_point(device: &str) -> Result<PathBuf, Error> {
             .map_err(|e| Error::CommandError(format!("Failed to mount partition: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to mount partition".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to mount partition".to_string(),
+            ));
         }
 
         // Return the mount point
@@ -324,7 +349,8 @@ fn get_mount_point(device: &str) -> Result<PathBuf, Error> {
 
         // Parse the output to find the mount point
         let output_str = String::from_utf8_lossy(&output.stdout);
-        let mount_point_line = output_str.lines()
+        let mount_point_line = output_str
+            .lines()
             .find(|line| line.contains("<key>MountPoint</key>"))
             .and_then(|_| output_str.lines().find(|line| line.contains("<string>")))
             .ok_or_else(|| Error::PartitionError("Failed to find mount point".to_string()))?;
@@ -358,7 +384,9 @@ fn get_mount_point(device: &str) -> Result<PathBuf, Error> {
             .map_err(|e| Error::CommandError(format!("Failed to mount partition: {}", e)))?;
 
         if !status.success() {
-            return Err(Error::PartitionError("Failed to mount partition".to_string()));
+            return Err(Error::PartitionError(
+                "Failed to mount partition".to_string(),
+            ));
         }
 
         // Return the mount point
@@ -413,19 +441,27 @@ async fn download_oci_image(image_ref: &str, mount_point: &Path) -> Result<(), E
         .map_err(|e| Error::OciError(format!("Invalid image reference: {}", e)))?;
 
     // Create OCI client
-    let registry_url = format!("https://{}", image_reference.hostname.unwrap_or(String::from("localhost")));
+    let registry_url = format!(
+        "https://{}",
+        image_reference
+            .hostname
+            .unwrap_or(String::from("localhost"))
+    );
     let client = OciClient::new(registry_url, None);
     let mut session = client.new_session(image_reference.name.clone());
 
     // Query the manifest
     let reference = image_reference.tag.as_str();
-    let manifest = session.query_manifest(reference)
+    let manifest = session
+        .query_manifest(reference)
         .await
         .map_err(|e| Error::OciError(format!("Failed to query manifest: {}", e)))?
         .ok_or_else(|| Error::OciError("Manifest not found".to_string()))?;
 
     // Create directory for the image
-    let image_dir = mount_point.join("images").join(image_reference.name.as_str());
+    let image_dir = mount_point
+        .join("images")
+        .join(image_reference.name.as_str());
     fs::create_dir_all(&image_dir).map_err(|e| Error::IoError(e))?;
 
     // Download layers
@@ -435,27 +471,35 @@ async fn download_oci_image(image_ref: &str, mount_point: &Path) -> Result<(), E
 
             // Download config
             let config_path = image_dir.join("config.json");
-            session.download_blob(&image_manifest.config.digest, &config_path, true)
+            session
+                .download_blob(&image_manifest.config.digest, &config_path, true)
                 .await
                 .map_err(|e| Error::OciError(format!("Failed to download config: {}", e)))?;
 
             // Download layers
             for (i, layer) in image_manifest.layers.iter().enumerate() {
-                println!("Downloading layer {}/{}...", i + 1, image_manifest.layers.len());
+                println!(
+                    "Downloading layer {}/{}...",
+                    i + 1,
+                    image_manifest.layers.len()
+                );
                 let layer_path = image_dir.join(format!("layer_{}.tar", i));
-                session.download_blob(&layer.digest, &layer_path, true)
+                session
+                    .download_blob(&layer.digest, &layer_path, true)
                     .await
                     .map_err(|e| Error::OciError(format!("Failed to download layer: {}", e)))?;
             }
 
             // Save manifest
             let manifest_path = image_dir.join("manifest.json");
-            let manifest_json = serde_json::to_string_pretty(&image_manifest)
-                .map_err(|e| Error::JSONError(e))?;
+            let manifest_json =
+                serde_json::to_string_pretty(&image_manifest).map_err(|e| Error::JSONError(e))?;
             fs::write(manifest_path, manifest_json).map_err(|e| Error::IoError(e))?;
-        },
+        }
         _ => {
-            return Err(Error::OciError("Only image manifests are supported".to_string()));
+            return Err(Error::OciError(
+                "Only image manifests are supported".to_string(),
+            ));
         }
     }
 
@@ -469,7 +513,11 @@ async fn download_file(url: &str, path: &Path) -> Result<(), Error> {
     let res = client.get(url).send().await?;
 
     if !res.status().is_success() {
-        return Err(Error::DownloadCodeError(path.file_name().map(|p| p.to_string_lossy().to_string()).unwrap_or(String::from("unknown path"))));
+        return Err(Error::DownloadCodeError(
+            path.file_name()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or(String::from("unknown path")),
+        ));
     }
 
     let total_size = res.content_length().unwrap_or(0);
@@ -503,10 +551,14 @@ fn extract_archive(archive_path: &Path, target_dir: &Path) -> Result<(), Error> 
     if archive_path.extension().map_or(false, |ext| ext == "gz") {
         let decompressed = flate2::read::GzDecoder::new(file);
         let mut archive = Archive::new(decompressed);
-        archive.unpack(target_dir).map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
+        archive
+            .unpack(target_dir)
+            .map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
     } else {
         let mut archive = Archive::new(file);
-        archive.unpack(target_dir).map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
+        archive
+            .unpack(target_dir)
+            .map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
     }
 
     Ok(())
