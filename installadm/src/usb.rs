@@ -1,6 +1,7 @@
 use anyhow::Result;
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
+use libarchive::archive::{ReadCompression, ReadFormat};
 use ociclient::{Client as OciClient, ImageReference, ManifestVariant};
 use reqwest::Client;
 use std::fs::{self, File};
@@ -8,7 +9,6 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{absolute, Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
-use tar::Archive;
 use tempfile::tempdir;
 use url::Url;
 use which::which;
@@ -56,13 +56,14 @@ pub async fn create_bootable_usb(
 
     // Ensure the device exists, creating an empty file if it doesn't
     // Use the specified size or a default size if creating a new file
-    ensure_device_exists(&device_path, size_gb)?;
+    // This also sets up a loop device if the target is an image file
+    let (actual_device, using_loop) = ensure_device_exists(&device_path, size_gb)?;
 
     // Create FAT32 partition
-    create_fat32_partition(&device_path, size_gb)?;
+    create_fat32_partition(&actual_device, size_gb)?;
 
     // Get mount point
-    let mount_point = get_mount_point(&device_path)?;
+    let mount_point = get_mount_point(&actual_device)?;
     println!("USB device mounted at: {}", mount_point.display());
 
     // Download and extract boot files
@@ -76,6 +77,11 @@ pub async fn create_bootable_usb(
     // Download OCI image if specified
     if let Some(image) = oci_image {
         download_oci_image(image, &mount_point).await?;
+    }
+
+    // Clean up loop device if we created one
+    if using_loop {
+        cleanup_loop_device(&actual_device)?;
     }
 
     println!("Bootable USB created successfully!");
@@ -92,11 +98,13 @@ fn check_required_tools() -> Result<(), Error> {
         which("mkfs.fat").map_err(|_| Error::ToolNotFound("mkfs.fat".to_string()))?;
         which("mount").map_err(|_| Error::ToolNotFound("mount".to_string()))?;
         which("umount").map_err(|_| Error::ToolNotFound("umount".to_string()))?;
+        which("losetup").map_err(|_| Error::ToolNotFound("losetup".to_string()))?;
     }
 
     #[cfg(target_os = "macos")]
     {
         which("newfs_msdos").map_err(|_| Error::ToolNotFound("newfs_msdos".to_string()))?;
+        which("hdiutil").map_err(|_| Error::ToolNotFound("hdiutil".to_string()))?;
     }
 
     #[cfg(target_os = "windows")]
@@ -109,6 +117,7 @@ fn check_required_tools() -> Result<(), Error> {
         which("mkfs").map_err(|_| Error::ToolNotFound("mkfs".to_string()))?;
         which("mount").map_err(|_| Error::ToolNotFound("mount".to_string()))?;
         which("umount").map_err(|_| Error::ToolNotFound("umount".to_string()))?;
+        which("lofiadm").map_err(|_| Error::ToolNotFound("lofiadm".to_string()))?;
     }
 
     Ok(())
@@ -129,7 +138,9 @@ fn normalize_device_path(device: &str) -> Result<String, Error> {
 }
 
 /// Ensure the device exists, creating an empty file if it doesn't
-fn ensure_device_exists(device_path: &str, size_gb: u64) -> Result<(), Error> {
+/// Returns a tuple with the actual device path to use (which might be a loop device) and a boolean
+/// indicating whether a loop device was set up (true) or not (false)
+fn ensure_device_exists(device_path: &str, size_gb: u64) -> Result<(String, bool), Error> {
     let path = Path::new(device_path);
 
     // Check if the path exists
@@ -161,7 +172,199 @@ fn ensure_device_exists(device_path: &str, size_gb: u64) -> Result<(), Error> {
         );
     }
 
-    Ok(())
+    // Check if this is a regular file (image file) or a block device
+    let metadata = fs::metadata(path).map_err(|e| Error::IoError(e))?;
+
+    if metadata.is_file() {
+        // This is an image file, set up a loop device
+        println!("Setting up loop device for image file: {}", device_path);
+        let loop_device = setup_loop_device(device_path)?;
+        println!("Using loop device: {}", loop_device);
+        Ok((loop_device, true))
+    } else {
+        // This is a physical device, use it directly
+        Ok((device_path.to_string(), false))
+    }
+}
+
+/// Set up a loop device for an image file
+fn setup_loop_device(file_path: &str) -> Result<String, Error> {
+    #[cfg(target_os = "linux")]
+    {
+        // Check if losetup is available
+        which("losetup").map_err(|_| Error::ToolNotFound("losetup".to_string()))?;
+
+        // Set up a loop device
+        let output = Command::new("losetup")
+            .args(["--find", "--show", file_path])
+            .output()
+            .map_err(|e| Error::CommandError(format!("Failed to set up loop device: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(Error::CommandError(format!(
+                "Failed to set up loop device: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        // Get the loop device path
+        let loop_device = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if loop_device.is_empty() {
+            return Err(Error::CommandError(
+                "Failed to get loop device path".to_string(),
+            ));
+        }
+
+        Ok(loop_device)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, use hdiutil to attach the disk image
+        let output = Command::new("hdiutil")
+            .args(["attach", "-nomount", file_path])
+            .output()
+            .map_err(|e| Error::CommandError(format!("Failed to attach disk image: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(Error::CommandError(format!(
+                "Failed to attach disk image: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        // Parse the output to get the device path
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        let device_line = output_str
+            .lines()
+            .next()
+            .ok_or_else(|| Error::CommandError("Failed to get device path".to_string()))?;
+
+        let device_path = device_line
+            .split_whitespace()
+            .next()
+            .ok_or_else(|| Error::CommandError("Failed to parse device path".to_string()))?
+            .to_string();
+
+        Ok(device_path)
+    }
+
+    #[cfg(target_os = "illumos")]
+    {
+        // On illumos, use lofiadm to add the file as a block device
+        let output = Command::new("lofiadm")
+            .args(["-a", file_path])
+            .output()
+            .map_err(|e| Error::CommandError(format!("Failed to add lofi device: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(Error::CommandError(format!(
+                "Failed to add lofi device: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+
+        // Parse the output to get the device path
+        let lofi_device = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if lofi_device.is_empty() {
+            // If no output, try to find the device
+            let output = Command::new("lofiadm")
+                .output()
+                .map_err(|e| Error::CommandError(format!("Failed to list lofi devices: {}", e)))?;
+
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            for line in output_str.lines() {
+                if line.contains(file_path) {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if !parts.is_empty() {
+                        return Ok(parts[0].to_string());
+                    }
+                }
+            }
+
+            return Err(Error::CommandError(
+                "Failed to get lofi device path".to_string(),
+            ));
+        }
+
+        Ok(lofi_device)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "illumos")))]
+    {
+        Err(Error::CommandError(
+            "Loop device setup not supported on this platform".to_string(),
+        ))
+    }
+}
+
+/// Clean up a loop device
+fn cleanup_loop_device(device_path: &str) -> Result<(), Error> {
+    println!("Cleaning up loop device: {}", device_path);
+
+    #[cfg(target_os = "linux")]
+    {
+        // Check if losetup is available
+        which("losetup").map_err(|_| Error::ToolNotFound("losetup".to_string()))?;
+
+        // Detach the loop device
+        let status = Command::new("losetup")
+            .args(["-d", device_path])
+            .status()
+            .map_err(|e| Error::CommandError(format!("Failed to detach loop device: {}", e)))?;
+
+        if !status.success() {
+            return Err(Error::CommandError(
+                "Failed to detach loop device".to_string(),
+            ));
+        }
+
+        println!("Loop device detached successfully");
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // On macOS, use hdiutil to detach the disk image
+        let status = Command::new("hdiutil")
+            .args(["detach", device_path])
+            .status()
+            .map_err(|e| Error::CommandError(format!("Failed to detach disk image: {}", e)))?;
+
+        if !status.success() {
+            return Err(Error::CommandError(
+                "Failed to detach disk image".to_string(),
+            ));
+        }
+
+        println!("Disk image detached successfully");
+        Ok(())
+    }
+
+    #[cfg(target_os = "illumos")]
+    {
+        // On illumos, use lofiadm to remove the lofi device
+        let status = Command::new("lofiadm")
+            .args(["-d", device_path])
+            .status()
+            .map_err(|e| Error::CommandError(format!("Failed to remove lofi device: {}", e)))?;
+
+        if !status.success() {
+            return Err(Error::CommandError(
+                "Failed to remove lofi device".to_string(),
+            ));
+        }
+
+        println!("Lofi device removed successfully");
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "illumos")))]
+    {
+        Err(Error::CommandError(
+            "Loop device cleanup not supported on this platform".to_string(),
+        ))
+    }
 }
 
 /// Create a FAT32 partition on the device
@@ -214,7 +417,8 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
         }
 
         // Format partition
-        let partition = format!("{}1", device);
+        let partition = format!("{}p1", device);
+
         let status = Command::new("mkfs.fat")
             .args(["-F", "32", &partition])
             .status()
@@ -332,7 +536,7 @@ fn get_mount_point(device: &str) -> Result<PathBuf, Error> {
         let mount_path = mount_dir.path().to_path_buf();
 
         // Mount the partition
-        let partition = format!("{}1", device);
+        let partition = format!("{}p1", device);
         let status = Command::new("mount")
             .args([&partition, mount_path.to_str().unwrap()])
             .status()
@@ -603,23 +807,39 @@ async fn download_file(url: &str, path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-/// Extract a tar archive to a directory
+/// Extract an archive to a directory using libarchive
 fn extract_archive(archive_path: &Path, target_dir: &Path) -> Result<(), Error> {
-    let file = File::open(archive_path).map_err(|e| Error::IoError(e))?;
+    // Create a new reader
+    let mut reader_builder = libarchive::reader::Builder::new();
 
-    // Check if it's a gzipped archive
+    // Set the compression based on file extension
     if archive_path.extension().map_or(false, |ext| ext == "gz") {
-        let decompressed = flate2::read::GzDecoder::new(file);
-        let mut archive = Archive::new(decompressed);
-        archive
-            .unpack(target_dir)
-            .map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
+        reader_builder
+            .support_compression(ReadCompression::Gzip)
+            .map_err(|e| Error::ArchiveError(format!("Failed to set compression: {}", e)))?;
     } else {
-        let mut archive = Archive::new(file);
-        archive
-            .unpack(target_dir)
-            .map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
+        reader_builder
+            .support_compression(ReadCompression::None)
+            .map_err(|e| Error::ArchiveError(format!("Failed to set compression: {}", e)))?;
     }
+
+    // Support common archive formats
+    reader_builder
+        .support_format(ReadFormat::All)
+        .map_err(|e| Error::ArchiveError(format!("Failed to set format: {}", e)))?;
+
+    // Open the archive file
+    let mut reader = reader_builder
+        .open_file(archive_path.to_str().ok_or(Error::ArchiveError(format!(
+            "Failed to open archive: {} is not a valid path",
+            archive_path.display()
+        )))?)
+        .map_err(|e| Error::ArchiveError(format!("Failed to open archive: {}", e)))?;
+
+    let writer = libarchive::writer::Disk::new();
+    writer
+        .write(&mut reader, target_dir.as_os_str().to_str())
+        .map_err(|e| Error::ArchiveError(format!("Failed to extract archive: {}", e)))?;
 
     Ok(())
 }

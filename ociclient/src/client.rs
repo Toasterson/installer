@@ -209,7 +209,9 @@ pub struct ClientSession {
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     token: String,
+    #[allow(dead_code)]
     expires_in: Option<u64>,
+    #[allow(dead_code)]
     issued_at: Option<String>,
 }
 
@@ -380,6 +382,7 @@ impl ClientSession {
     }
 
     /// Make an authenticated DELETE request to the registry.
+    #[allow(dead_code)]
     async fn authenticated_delete(&mut self, url: &str) -> Result<reqwest::Response> {
         self.authenticate_request(url, reqwest::Method::DELETE).await
     }

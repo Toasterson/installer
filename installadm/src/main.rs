@@ -90,7 +90,8 @@ enum Commands {
     /// - ~/.config/installadm/config
     /// - Environment variable INSTALLADM_BOOT_FILES_URL
     CreateBootableUsb {
-        /// Path to the USB device (e.g., /dev/sdb on Linux, disk2 on macOS)
+        /// Path to the USB device (e.g., /dev/sdb on Linux, disk2 on macOS) or an image file
+        /// If an image file is provided, it will be mounted as a loop device
         device: String,
 
         /// Optional OCI image to download to the USB stick

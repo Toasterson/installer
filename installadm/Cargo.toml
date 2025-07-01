@@ -16,8 +16,7 @@ tonic = { version = "0.12.3", features = ["zstd"] }
 url = "*"
 config = { version = "0.15.0", features = ["yaml"] }
 dirs = "5.0.1"
-tar = "0.4"
-flate2 = "1"
+libarchive = "0.1"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 tempfile = "3"
 futures-util = "0.3"
