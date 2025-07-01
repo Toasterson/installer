@@ -123,7 +123,7 @@ fn normalize_device_path(device: &str) -> Result<String, Error> {
         if p.is_absolute() {
             Ok(device.to_string())
         } else {
-            Ok(absolute(p)?.to_string_lossy().to_string())   
+            Ok(absolute(p)?.to_string_lossy().to_string())
         }
     }
 }
@@ -192,7 +192,7 @@ fn create_fat32_partition(device: &str, size_gb: u64) -> Result<(), Error> {
                 "primary",
                 "fat32",
                 "1MiB",
-                &format!("{}GiB", size_gb),
+                &format!("{}GB", size_gb),
             ])
             .status()
             .map_err(|e| Error::CommandError(format!("Failed to create partition: {}", e)))?;
