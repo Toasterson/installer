@@ -15,6 +15,7 @@ use tonic::transport::Channel;
 use tonic::Status;
 use url::Url;
 
+mod config;
 mod machined;
 mod state;
 mod usb;
@@ -82,13 +83,15 @@ enum Commands {
         config: PathBuf,
     },
     /// Create a bootable USB stick with EFI boot files
+    /// 
+    /// The boot files URL is configured in one of the following locations:
+    /// - /etc/installadm/config
+    /// - /etc/installadm/config.<RUN_MODE>
+    /// - ~/.config/installadm/config
+    /// - Environment variable INSTALLADM_BOOT_FILES_URL
     CreateBootableUsb {
         /// Path to the USB device (e.g., /dev/sdb on Linux, disk2 on macOS)
         device: String,
-
-        /// URL to download boot files from (tar archive)
-        #[arg(short, long)]
-        boot_files_url: String,
 
         /// Optional OCI image to download to the USB stick
         #[arg(short, long)]
@@ -153,7 +156,6 @@ async fn main() -> Result<()> {
         }
         Commands::CreateBootableUsb { 
             device, 
-            boot_files_url, 
             oci_image, 
             size, 
             assets_url 
@@ -161,7 +163,6 @@ async fn main() -> Result<()> {
             println!("Creating bootable USB stick on device: {}", device);
             usb::create_bootable_usb(
                 &device,
-                &boot_files_url,
                 oci_image.as_deref(),
                 size,
                 assets_url.as_deref()

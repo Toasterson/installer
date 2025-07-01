@@ -1,0 +1,3 @@
+# Sample configuration file for installadm in YAML format
+boot_files_url: /path/to/local/boot_files.tar.gz
+cache_dir: /tmp/installadm-cache-yaml

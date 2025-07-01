@@ -1,0 +1,2 @@
+boot_files_url = "https://dlc.openindiana.org/netboot/installer/current/boot_files.tar.gz"
+cache_dir = "/tmp/installadm-cache"

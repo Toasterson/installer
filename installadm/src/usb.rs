@@ -10,8 +10,10 @@ use std::process::Command;
 use std::str::FromStr;
 use tar::Archive;
 use tempfile::tempdir;
+use url::Url;
 use which::which;
 
+use crate::config::InstallAdmConfig;
 use crate::Error;
 
 // Platform-specific disk utilities
@@ -37,11 +39,14 @@ pub const DEVICE_PREFIX: &str = "/dev/dsk/";
 /// Create a bootable USB stick with EFI boot files
 pub async fn create_bootable_usb(
     device: &str,
-    boot_files_url: &str,
     oci_image: Option<&str>,
     size_gb: u64,
     assets_url: Option<&str>,
 ) -> Result<(), Error> {
+    // Load configuration
+    let config = InstallAdmConfig::load()
+        .map_err(|e| Error::CommandError(format!("Failed to load configuration: {}", e)))?;
+
     // Check if required tools are available
     check_required_tools()?;
 
@@ -61,7 +66,7 @@ pub async fn create_bootable_usb(
     println!("USB device mounted at: {}", mount_point.display());
 
     // Download and extract boot files
-    download_and_extract_boot_files(boot_files_url, &mount_point).await?;
+    download_and_extract_boot_files(&config.boot_files_url, &mount_point).await?;
 
     // Download additional assets if specified
     if let Some(url) = assets_url {
@@ -396,14 +401,14 @@ fn get_mount_point(device: &str) -> Result<PathBuf, Error> {
 
 /// Download and extract boot files from a URL
 async fn download_and_extract_boot_files(url: &str, mount_point: &Path) -> Result<(), Error> {
-    println!("Downloading boot files from {}...", url);
+    println!("Getting boot files from {}...", url);
 
     // Create a temporary directory for the download
     let temp_dir = tempdir().map_err(|e| Error::IoError(e))?;
     let archive_path = temp_dir.path().join("boot_files.tar.gz");
 
-    // Download the file
-    download_file(url, &archive_path).await?;
+    // Get the file from cache or download it
+    get_cached_or_download_file(url, &archive_path).await?;
 
     // Extract the archive
     println!("Extracting boot files...");
@@ -413,16 +418,69 @@ async fn download_and_extract_boot_files(url: &str, mount_point: &Path) -> Resul
     Ok(())
 }
 
+/// Get a file from the cache or download it if it's not in the cache
+async fn get_cached_or_download_file(url: &str, target_path: &Path) -> Result<(), Error> {
+    // Load the configuration
+    let config = InstallAdmConfig::load()
+        .map_err(|e| Error::CommandError(format!("Failed to load configuration: {}", e)))?;
+
+    // Create the cache directory if it doesn't exist
+    fs::create_dir_all(&config.cache_dir)
+        .map_err(|e| Error::IoError(e))?;
+
+    // Parse the URL
+    let url_obj = Url::parse(url)
+        .map_err(|e| Error::UrlParse(e))?;
+
+    // Handle local file paths (file:// URLs)
+    if url_obj.scheme() == "file" {
+        let file_path = url_obj.to_file_path()
+            .map_err(|_| Error::CommandError(format!("Invalid file URL: {}", url)))?;
+
+        println!("Using local file: {}", file_path.display());
+
+        // Copy the file directly to the target path
+        fs::copy(&file_path, target_path)
+            .map_err(|e| Error::IoError(e))?;
+
+        return Ok(());
+    }
+
+    // For remote URLs, use the cache
+    let filename = url_obj.path_segments()
+        .and_then(|segments| segments.last())
+        .unwrap_or("file.bin");
+
+    let cache_path = config.cache_dir.join(filename);
+
+    // Check if the file exists in the cache
+    if cache_path.exists() {
+        println!("Using cached file: {}", cache_path.display());
+        // Copy the file from the cache to the target path
+        fs::copy(&cache_path, target_path)
+            .map_err(|e| Error::IoError(e))?;
+    } else {
+        println!("Downloading file from {}...", url);
+        // Download the file
+        download_file(url, &cache_path).await?;
+        // Copy the file from the cache to the target path
+        fs::copy(&cache_path, target_path)
+            .map_err(|e| Error::IoError(e))?;
+    }
+
+    Ok(())
+}
+
 /// Download and extract additional assets
 async fn download_and_extract_assets(url: &str, mount_point: &Path) -> Result<(), Error> {
-    println!("Downloading additional assets from {}...", url);
+    println!("Getting additional assets from {}...", url);
 
     // Create a temporary directory for the download
     let temp_dir = tempdir().map_err(|e| Error::IoError(e))?;
     let archive_path = temp_dir.path().join("assets.tar.gz");
 
-    // Download the file
-    download_file(url, &archive_path).await?;
+    // Get the file from cache or download it
+    get_cached_or_download_file(url, &archive_path).await?;
 
     // Extract the archive
     println!("Extracting additional assets...");

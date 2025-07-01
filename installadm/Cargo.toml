@@ -14,6 +14,8 @@ thiserror = "2.0.11"
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "fs"] }
 tonic = { version = "0.12.3", features = ["zstd"] }
 url = "*"
+config = { version = "0.15.0", features = ["yaml"] }
+dirs = "5.0.1"
 tar = "0.4"
 flate2 = "1"
 reqwest = { version = "0.12", features = ["json", "stream"] }
