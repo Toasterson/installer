@@ -83,7 +83,7 @@ enum Commands {
         config: PathBuf,
     },
     /// Create a bootable USB stick with EFI boot files
-    /// 
+    ///
     /// The boot files URL is configured in one of the following locations:
     /// - /etc/installadm/config
     /// - /etc/installadm/config.<RUN_MODE>
@@ -154,19 +154,15 @@ async fn main() -> Result<()> {
                 println!("{}: {:?}", progress.level, progress.message);
             }
         }
-        Commands::CreateBootableUsb { 
-            device, 
-            oci_image, 
-            size, 
-            assets_url 
+        Commands::CreateBootableUsb {
+            device,
+            oci_image,
+            size,
+            assets_url,
         } => {
             println!("Creating bootable USB stick on device: {}", device);
-            usb::create_bootable_usb(
-                &device,
-                oci_image.as_deref(),
-                size,
-                assets_url.as_deref()
-            ).await?;
+            usb::create_bootable_usb(&device, oci_image.as_deref(), size, assets_url.as_deref())
+                .await?;
         }
     }
 

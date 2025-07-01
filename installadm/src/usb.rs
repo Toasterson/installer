@@ -425,29 +425,28 @@ async fn get_cached_or_download_file(url: &str, target_path: &Path) -> Result<()
         .map_err(|e| Error::CommandError(format!("Failed to load configuration: {}", e)))?;
 
     // Create the cache directory if it doesn't exist
-    fs::create_dir_all(&config.cache_dir)
-        .map_err(|e| Error::IoError(e))?;
+    fs::create_dir_all(&config.cache_dir).map_err(|e| Error::IoError(e))?;
 
     // Parse the URL
-    let url_obj = Url::parse(url)
-        .map_err(|e| Error::UrlParse(e))?;
+    let url_obj = Url::parse(url).map_err(|e| Error::UrlParse(e))?;
 
     // Handle local file paths (file:// URLs)
     if url_obj.scheme() == "file" {
-        let file_path = url_obj.to_file_path()
+        let file_path = url_obj
+            .to_file_path()
             .map_err(|_| Error::CommandError(format!("Invalid file URL: {}", url)))?;
 
         println!("Using local file: {}", file_path.display());
 
         // Copy the file directly to the target path
-        fs::copy(&file_path, target_path)
-            .map_err(|e| Error::IoError(e))?;
+        fs::copy(&file_path, target_path).map_err(|e| Error::IoError(e))?;
 
         return Ok(());
     }
 
     // For remote URLs, use the cache
-    let filename = url_obj.path_segments()
+    let filename = url_obj
+        .path_segments()
         .and_then(|segments| segments.last())
         .unwrap_or("file.bin");
 
@@ -457,15 +456,13 @@ async fn get_cached_or_download_file(url: &str, target_path: &Path) -> Result<()
     if cache_path.exists() {
         println!("Using cached file: {}", cache_path.display());
         // Copy the file from the cache to the target path
-        fs::copy(&cache_path, target_path)
-            .map_err(|e| Error::IoError(e))?;
+        fs::copy(&cache_path, target_path).map_err(|e| Error::IoError(e))?;
     } else {
         println!("Downloading file from {}...", url);
         // Download the file
         download_file(url, &cache_path).await?;
         // Copy the file from the cache to the target path
-        fs::copy(&cache_path, target_path)
-            .map_err(|e| Error::IoError(e))?;
+        fs::copy(&cache_path, target_path).map_err(|e| Error::IoError(e))?;
     }
 
     Ok(())
