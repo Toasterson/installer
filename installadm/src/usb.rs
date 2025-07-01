@@ -5,7 +5,7 @@ use ociclient::{Client as OciClient, ImageReference, ManifestVariant};
 use reqwest::Client;
 use std::fs::{self, File};
 use std::io::{Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::{absolute, Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
 use tar::Archive;
@@ -119,7 +119,12 @@ fn normalize_device_path(device: &str) -> Result<String, Error> {
     if device.starts_with(DEVICE_PREFIX) {
         Ok(device.to_string())
     } else {
-        Ok(format!("{}{}", DEVICE_PREFIX, device))
+        let p = Path::new(device);
+        if p.is_absolute() {
+            Ok(device.to_string())
+        } else {
+            Ok(absolute(p)?.to_string_lossy().to_string())   
+        }
     }
 }
 
