@@ -22,6 +22,17 @@
 
     { "t": "remove_files", "pattern": "*.a" },
 
+    { "t": "remove_files", "file": "/boot/solaris/bin/root_archive" },
+
+    { "t": "remove_files", "file": "/boot/solaris.xpm" },
+
+    { "t": "ensure_file", "file": "/EFI/boot64.efi",
+      "imagesrc": "/boot/loader64.efi",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
     { "t": "pack_tar",
       "name": "${name}-ramdisk-boot.tar",
       "include": [
