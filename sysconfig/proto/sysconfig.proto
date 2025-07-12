@@ -1,0 +1,315 @@
+syntax = "proto3";
+
+package sysconfig;
+
+// The main SysConfig service that manages system configuration
+service SysConfigService {
+  // Register a plugin with the sysconfig service
+  rpc RegisterPlugin(RegisterPluginRequest) returns (RegisterPluginResponse);
+  
+  // Get the current system state
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+  
+  // Apply a new state to the system
+  rpc ApplyState(ApplyStateRequest) returns (ApplyStateResponse);
+  
+  // Execute an action on the system
+  rpc ExecuteAction(ExecuteActionRequest) returns (ExecuteActionResponse);
+  
+  // Watch for state changes
+  rpc WatchState(WatchStateRequest) returns (stream StateChangeEvent);
+  
+  // Lock a part of the state to prevent other plugins from modifying it
+  rpc LockState(LockStateRequest) returns (LockStateResponse);
+  
+  // Unlock a previously locked part of the state
+  rpc UnlockState(UnlockStateRequest) returns (UnlockStateResponse);
+}
+
+// Plugin service that must be implemented by each plugin
+service PluginService {
+  // Initialize the plugin
+  rpc Initialize(InitializeRequest) returns (InitializeResponse);
+  
+  // Get the plugin's configuration
+  rpc GetConfig(GetConfigRequest) returns (GetConfigResponse);
+  
+  // Diff the current state with the desired state
+  rpc DiffState(DiffStateRequest) returns (DiffStateResponse);
+  
+  // Apply a new state
+  rpc ApplyState(PluginApplyStateRequest) returns (PluginApplyStateResponse);
+  
+  // Execute an action
+  rpc ExecuteAction(PluginExecuteActionRequest) returns (PluginExecuteActionResponse);
+  
+  // Notify the plugin of state changes
+  rpc NotifyStateChange(NotifyStateChangeRequest) returns (NotifyStateChangeResponse);
+}
+
+// Request to register a plugin
+message RegisterPluginRequest {
+  // Unique identifier for the plugin
+  string plugin_id = 1;
+  
+  // Name of the plugin
+  string name = 2;
+  
+  // Description of the plugin
+  string description = 3;
+  
+  // Socket path where the plugin is listening
+  string socket_path = 4;
+  
+  // State paths that this plugin wants to manage
+  repeated string managed_paths = 5;
+}
+
+// Response to plugin registration
+message RegisterPluginResponse {
+  // Whether the registration was successful
+  bool success = 1;
+  
+  // Error message if registration failed
+  string error = 2;
+}
+
+// Request to get the current system state
+message GetStateRequest {
+  // Optional path to get a specific part of the state
+  string path = 1;
+}
+
+// Response containing the current system state
+message GetStateResponse {
+  // The state as a JSON string
+  string state = 1;
+}
+
+// Request to apply a new state to the system
+message ApplyStateRequest {
+  // The new state as a JSON string
+  string state = 1;
+  
+  // Whether to perform a dry run (validate but don't apply)
+  bool dry_run = 2;
+}
+
+// Response to applying a new state
+message ApplyStateResponse {
+  // Whether the state was applied successfully
+  bool success = 1;
+  
+  // Error message if the state application failed
+  string error = 2;
+  
+  // Changes that were made (or would be made in a dry run)
+  repeated StateChange changes = 3;
+}
+
+// Request to execute an action
+message ExecuteActionRequest {
+  // The action to execute
+  string action = 1;
+  
+  // Parameters for the action as a JSON string
+  string parameters = 2;
+  
+  // Plugin to execute the action on (if empty, the service will route to the appropriate plugin)
+  string plugin_id = 3;
+}
+
+// Response to executing an action
+message ExecuteActionResponse {
+  // Whether the action was executed successfully
+  bool success = 1;
+  
+  // Error message if the action execution failed
+  string error = 2;
+  
+  // Result of the action as a JSON string
+  string result = 3;
+}
+
+// Request to watch for state changes
+message WatchStateRequest {
+  // Optional path to watch for changes
+  string path = 1;
+}
+
+// Event representing a state change
+message StateChangeEvent {
+  // The path that changed
+  string path = 1;
+  
+  // The new value as a JSON string
+  string value = 2;
+  
+  // The plugin that made the change
+  string plugin_id = 3;
+  
+  // Timestamp of the change
+  int64 timestamp = 4;
+}
+
+// Request to lock a part of the state
+message LockStateRequest {
+  // The path to lock
+  string path = 1;
+  
+  // The plugin requesting the lock
+  string plugin_id = 2;
+}
+
+// Response to locking a part of the state
+message LockStateResponse {
+  // Whether the lock was acquired
+  bool success = 1;
+  
+  // Error message if the lock acquisition failed
+  string error = 2;
+}
+
+// Request to unlock a part of the state
+message UnlockStateRequest {
+  // The path to unlock
+  string path = 1;
+  
+  // The plugin requesting the unlock
+  string plugin_id = 2;
+}
+
+// Response to unlocking a part of the state
+message UnlockStateResponse {
+  // Whether the unlock was successful
+  bool success = 1;
+  
+  // Error message if the unlock failed
+  string error = 2;
+}
+
+// Request to initialize a plugin
+message InitializeRequest {
+  // The plugin ID assigned by the service
+  string plugin_id = 1;
+  
+  // The socket path where the service is listening
+  string service_socket_path = 2;
+}
+
+// Response to plugin initialization
+message InitializeResponse {
+  // Whether initialization was successful
+  bool success = 1;
+  
+  // Error message if initialization failed
+  string error = 2;
+}
+
+// Request to get a plugin's configuration
+message GetConfigRequest {
+  // Empty
+}
+
+// Response containing a plugin's configuration
+message GetConfigResponse {
+  // The configuration as a JSON string
+  string config = 1;
+}
+
+// Request to diff the current state with the desired state
+message DiffStateRequest {
+  // The current state as a JSON string
+  string current_state = 1;
+  
+  // The desired state as a JSON string
+  string desired_state = 2;
+}
+
+// Response containing the diff between current and desired state
+message DiffStateResponse {
+  // Whether the states are different
+  bool different = 1;
+  
+  // The changes that would be made to reach the desired state
+  repeated StateChange changes = 2;
+}
+
+// Request for a plugin to apply a new state
+message PluginApplyStateRequest {
+  // The new state as a JSON string
+  string state = 1;
+  
+  // Whether to perform a dry run (validate but don't apply)
+  bool dry_run = 2;
+}
+
+// Response to a plugin applying a new state
+message PluginApplyStateResponse {
+  // Whether the state was applied successfully
+  bool success = 1;
+  
+  // Error message if the state application failed
+  string error = 2;
+  
+  // Changes that were made (or would be made in a dry run)
+  repeated StateChange changes = 3;
+}
+
+// Request for a plugin to execute an action
+message PluginExecuteActionRequest {
+  // The action to execute
+  string action = 1;
+  
+  // Parameters for the action as a JSON string
+  string parameters = 2;
+}
+
+// Response to a plugin executing an action
+message PluginExecuteActionResponse {
+  // Whether the action was executed successfully
+  bool success = 1;
+  
+  // Error message if the action execution failed
+  string error = 2;
+  
+  // Result of the action as a JSON string
+  string result = 3;
+}
+
+// Request to notify a plugin of state changes
+message NotifyStateChangeRequest {
+  // The state change event
+  StateChangeEvent event = 1;
+}
+
+// Response to a state change notification
+message NotifyStateChangeResponse {
+  // Whether the notification was processed successfully
+  bool success = 1;
+  
+  // Error message if the notification processing failed
+  string error = 2;
+}
+
+// Represents a change to the system state
+message StateChange {
+  // The type of change
+  ChangeType type = 1;
+  
+  // The path that changed
+  string path = 2;
+  
+  // The old value (for updates and deletes)
+  string old_value = 3;
+  
+  // The new value (for creates and updates)
+  string new_value = 4;
+}
+
+// Types of state changes
+enum ChangeType {
+  CREATE = 0;
+  UPDATE = 1;
+  DELETE = 2;
+}
