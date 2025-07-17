@@ -3,6 +3,9 @@
     { "t": "ensure_file", "file": "/usr/lib/machined",
       "src": "machined",
       "owner": "root", "group": "root", "mode": "755" },
+    { "t": "ensure_file", "file": "/usr/lib/machined-wrapper",
+      "src": "machined-wrapper.sh",
+      "owner": "root", "group": "root", "mode": "755" },
     { "t": "ensure_file", "file": "/lib/svc/manifest/system/machined.xml",
       "src": "machined-smf-service.xml",
       "owner": "root", "group": "root", "mode": "644" }

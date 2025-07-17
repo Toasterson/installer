@@ -90,7 +90,7 @@
         <exec_method
             type='method'
             name='start'
-            exec='/usr/lib/machined'
+            exec='/usr/lib/machined-wrapper'
             timeout_seconds='60'
         />
 
@@ -102,7 +102,7 @@
         />
 
         <property_group name='startd' type='framework'>
-            <propval name='duration' type='astring' value='child' />
+            <propval name='duration' type='astring' value='contract' />
         </property_group>
 
         <stability value='Unstable' />

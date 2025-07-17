@@ -106,6 +106,39 @@ enum Commands {
         #[arg(short, long)]
         assets_url: Option<String>,
     },
+    /// Test run the installer using libvirt
+    ///
+    /// Creates a bootable USB and launches a VM to test the installation
+    /// Currently only supports Linux with libvirt
+    TestrunInstaller {
+        /// Path to the USB device (e.g., /dev/sdb on Linux) or an image file
+        /// If an image file is provided, it will be mounted as a loop device
+        device: String,
+
+        /// Optional OCI image to download to the USB stick
+        #[arg(short, long)]
+        oci_image: Option<String>,
+
+        /// Optional size of the FAT32 partition in GB (default: 4)
+        #[arg(short, long, default_value = "4")]
+        size: u64,
+
+        /// Optional additional assets URL
+        #[arg(short, long)]
+        assets_url: Option<String>,
+
+        /// Optional configuration file to use for installation
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Memory size for the VM in MB (default: 2048)
+        #[arg(short, long, default_value = "2048")]
+        memory: u64,
+
+        /// Number of CPUs for the VM (default: 2)
+        #[arg(short, long, default_value = "2")]
+        cpus: u32,
+    },
 }
 
 #[tokio::main]
@@ -164,6 +197,27 @@ async fn main() -> Result<()> {
             println!("Creating bootable USB stick on device: {}", device);
             usb::create_bootable_usb(&device, oci_image.as_deref(), size, assets_url.as_deref())
                 .await?;
+        },
+        Commands::TestrunInstaller {
+            device,
+            oci_image,
+            size,
+            assets_url,
+            config,
+            memory,
+            cpus,
+        } => {
+            println!("Test running installer on device: {}", device);
+            usb::testrun_installer(
+                &device,
+                oci_image.as_deref(),
+                size,
+                assets_url.as_deref(),
+                config.as_deref().map(|p| p.to_str().unwrap_or_default()),
+                memory,
+                cpus,
+            )
+            .await?;
         }
     }
 

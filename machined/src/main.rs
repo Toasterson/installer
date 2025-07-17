@@ -9,6 +9,7 @@ mod util;
 
 use crate::config::{load_config, MachinedConfig};
 use crate::machined::claim_request::ClaimSecret;
+use crate::machined::install_progress;
 use crate::machined::machine_service_server::MachineServiceServer;
 use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
 use base64::Engine;
@@ -16,7 +17,8 @@ use jwt_simple::prelude::*;
 use machineconfig::MachineConfig;
 use machined::machine_service_server::MachineService;
 use miette::IntoDiagnostic;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -25,7 +27,7 @@ use tonic::codegen::tokio_stream::wrappers::ReceiverStream;
 use tonic::codegen::tokio_stream::Stream;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{self, prelude::*, Registry};
 
 type ProgressMessage = Result<InstallProgress, Status>;
@@ -103,6 +105,27 @@ impl MachineService for Svc {
     }
 }
 
+/// Check for a KDL configuration file in /usb
+/// Returns the content of the file if found, None otherwise
+fn check_usb_config() -> Option<(String, String)> {
+    // Check for files with various extensions
+    for ext in &[".kdl", ".json", ".toml", ".yaml", ".yml"] {
+        let file_path = format!("/usb/machined{}", ext);
+        let path = Path::new(&file_path);
+        if path.exists() {
+            match fs::read_to_string(path) {
+                Ok(content) => {
+                    return Some((file_path, content));
+                }
+                Err(e) => {
+                    warn!("Failed to read {}: {}", file_path, e);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> miette::Result<()> {
     // install global collector configured based on RUST_LOG env var.
@@ -131,7 +154,73 @@ async fn main() -> miette::Result<()> {
 
     let cfg = load_config()?;
 
+    // Check for a KDL configuration file in /usb
+    if let Some((file_path, config_content)) = check_usb_config() {
+        info!("Found configuration file: {}", file_path);
+        info!("Running installation based on USB configuration");
+
+        // Parse the configuration
+        let mc: MachineConfig = match machineconfig::parse_config(&file_path, &config_content) {
+            Ok(config) => config,
+            Err(e) => {
+                warn!("Failed to parse configuration file: {}", e);
+                return Err(e.into());
+            }
+        };
+
+        // Create a channel for progress messages
+        let (tx, mut rx) = mpsc::channel::<Result<InstallProgress, Status>>(100);
+
+        // Spawn a task to handle progress messages
+        tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                match msg {
+                    Ok(progress) => {
+                        let level = match progress.level {
+                            0 => "DEBUG",
+                            1 => "INFO",
+                            2 => "WARNING",
+                            3 => "ERROR",
+                            _ => "UNKNOWN",
+                        };
+
+                        if let Some(message) = progress.message {
+                            match message {
+                                install_progress::Message::Info(info) => {
+                                    info!("[{}] {}", level, info);
+                                }
+                                install_progress::Message::Error(error) => {
+                                    warn!("[{}] {}", level, error);
+                                }
+                            }
+                        } else {
+                            info!("[{}] <no message>", level);
+                        }
+                    }
+                    Err(status) => {
+                        warn!("Error: {}", status);
+                    }
+                }
+            }
+        });
+
+        // Run the installation
+        match platform::install_system(&mc, Arc::new(cfg), tx).await {
+            Ok(_) => {
+                info!("Installation completed successfully");
+            }
+            Err(e) => {
+                warn!("Installation failed: {}", e);
+                return Err(miette::miette!("Installation failed: {}", e));
+            }
+        }
+
+        return Ok(());
+    }
+
+    // If no configuration file was found, start the gRPC server
     // first we get all ip addresses and display them together with the claim key
+    info!("No USB configuration file found, starting gRPC server");
     info!("Listing all interfaces and ip addresses available");
     let addrs = nix::ifaddrs::getifaddrs().unwrap();
     for ifaddr in addrs {

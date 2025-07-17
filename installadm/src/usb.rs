@@ -9,12 +9,17 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{absolute, Path, PathBuf};
 use std::process::Command;
 use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::tempdir;
 use url::Url;
 use which::which;
+use serde_json::json;
 
 use crate::config::InstallAdmConfig;
 use crate::Error;
+
+// For testrun mode
+use std::fs::OpenOptions;
 
 // Platform-specific disk utilities
 #[cfg(target_os = "linux")]
@@ -805,6 +810,180 @@ async fn download_file(url: &str, path: &Path) -> Result<(), Error> {
 
     pb.finish_with_message("Download complete");
     Ok(())
+}
+
+/// Run a testrun of the installer using libvirt
+/// 
+/// This function:
+/// 1. Creates a bootable USB (or uses an existing one)
+/// 2. Generates or copies a configuration file to the USB
+/// 3. Launches a VM using libvirt to test the installation
+pub async fn testrun_installer(
+    device: &str,
+    oci_image: Option<&str>,
+    size_gb: u64,
+    assets_url: Option<&str>,
+    config_file: Option<&str>,
+    memory_mb: u64,
+    cpus: u32,
+) -> Result<(), Error> {
+    // Check if libvirt is available
+    which("virsh").map_err(|_| Error::ToolNotFound("virsh".to_string()))?;
+    which("virt-install").map_err(|_| Error::ToolNotFound("virt-install".to_string()))?;
+
+    // Create or use existing bootable USB
+    println!("Setting up bootable USB for testrun...");
+    create_bootable_usb(device, oci_image, size_gb, assets_url).await?;
+
+    // Get mount point of the USB
+    let device_path = normalize_device_path(device)?;
+    let (actual_device, using_loop) = ensure_device_exists(&device_path, size_gb)?;
+    let mount_point = get_mount_point(&actual_device)?;
+
+
+    // Generate or copy config file to USB
+    if let Some(config_path) = config_file {
+        println!("Copying config file to USB...");
+        let config_content = fs::read_to_string(config_path)
+            .map_err(|e| Error::IoError(e))?;
+
+        // Determine the file extension based on content or use a default
+        let extension = if config_content.trim().starts_with('{') {
+            // Looks like JSON
+            ".json"
+        } else if config_content.contains('=') && !config_content.contains(':') {
+            // Likely TOML
+            ".toml"
+        } else if config_content.contains(':') && !config_content.contains('{') {
+            // Likely YAML
+            ".yaml"
+        } else {
+            // Default to JSON if can't determine
+            ".json"
+        };
+
+        let usb_config_path = mount_point.join(format!("machined{}", extension));
+        println!("Writing config file to {}", usb_config_path.display());
+
+        let mut config_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&usb_config_path)
+            .map_err(|e| Error::IoError(e))?;
+
+        config_file.write_all(config_content.as_bytes())
+            .map_err(|e| Error::IoError(e))?;
+    } else {
+        // Generate a default configuration file
+        println!("Generating default configuration file...");
+
+        // Generate the configuration content
+        let config_content = generate_default_config(oci_image)?;
+
+        // Write the configuration to the USB
+        let usb_config_path = mount_point.join("machined.json");
+        println!("Writing default config file to {}", usb_config_path.display());
+
+        let mut config_file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&usb_config_path)
+            .map_err(|e| Error::IoError(e))?;
+
+        config_file.write_all(config_content.as_bytes())
+            .map_err(|e| Error::IoError(e))?;
+    }
+
+    println!("USB prepared for testrun");
+
+    // Generate a unique VM name using timestamp
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let vm_name = format!("installer-testrun-{}", timestamp);
+
+    // Launch VM using libvirt
+    println!("Launching VM for testrun...");
+    let status = Command::new("virt-install")
+        .args([
+            "--name", &vm_name,
+            "--memory", &format!("{}", memory_mb),
+            "--vcpus", &format!("{}", cpus),
+            "--disk", &format!("path={},bus=usb", device_path),
+            "--boot", "uefi",
+            "--os-variant", "generic",
+            "--graphics", "vnc",
+            "--noautoconsole",
+            "--import"
+        ])
+        .status()
+        .map_err(|e| Error::CommandError(format!("Failed to launch VM: {}", e)))?;
+
+    if !status.success() {
+        return Err(Error::CommandError("Failed to launch VM".to_string()));
+    }
+
+    println!("VM launched successfully with name: {}", vm_name);
+    println!("You can connect to the VM using:");
+    println!("  virsh console {}", vm_name);
+    println!("Or view the graphical console with:");
+    println!("  virt-viewer {}", vm_name);
+
+    // Clean up loop device if we created one
+    if using_loop {
+        cleanup_loop_device(&actual_device)?;
+    }
+
+    Ok(())
+}
+
+/// Generate a default configuration file for the installer
+fn generate_default_config(oci_image: Option<&str>) -> Result<String, Error> {
+    // Default OCI image if none provided
+    let image = oci_image.unwrap_or("oci://aopc.cloud/openindiana/hipster:latest");
+
+    // Create a default configuration
+    let config = json!({
+        "pool": {
+            "name": "rpool",
+            "vdev": {
+                "kind": "Mirror",
+                "disks": ["c0t0d0", "c0t1d0"]  // Default disks, will be detected by machined
+            },
+            "options": [
+                {
+                    "name": "compression",
+                    "value": "zstd"
+                }
+            ]
+        },
+        "image": image,
+        "boot_environment_name": "illumos",
+        "sysconfig": {
+            "hostname": "illumos-test",
+            "nameservers": ["8.8.8.8", "8.8.4.4"],
+            "interfaces": [
+                {
+                    "name": "net0",
+                    "addresses": [
+                        {
+                            "name": "v4",
+                            "kind": "Dhcp4"
+                        }
+                    ]
+                }
+            ]
+        }
+    });
+
+    // Convert to a pretty-printed JSON string
+    let config_str = serde_json::to_string_pretty(&config)
+        .map_err(|e| Error::JSONError(e))?;
+
+    Ok(config_str)
 }
 
 /// Extract an archive to a directory using libarchive
