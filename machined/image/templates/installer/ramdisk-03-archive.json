@@ -26,6 +26,12 @@
 
     { "t": "remove_files", "file": "/boot/solaris.xpm" },
 
+    { "t": "ensure_dir", "dir": "/EFI",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
     { "t": "ensure_file", "file": "/EFI/boot64.efi",
       "imagesrc": "/boot/loader64.efi",
       "owner": "root",
