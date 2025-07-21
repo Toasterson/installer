@@ -1,5 +1,6 @@
 use crate::machined::InstallProgress;
 use jwt_simple::reexports::serde_json;
+use jwt_simple::Error as JwtError;
 use ociclient::client::ClientError;
 use std::io;
 use thiserror::Error;
@@ -45,4 +46,6 @@ pub enum InstallationError {
     TarReturnNonzeroExitCode,
     #[error("Send Failed")]
     SendFailed,
+    #[error(transparent)]
+    JwtError(#[from] JwtError),
 }
