@@ -174,7 +174,7 @@ For storage-related issues, use these diagnostic tools:
 
 If you're unable to resolve an issue using this troubleshooting guide, consider these resources:
 
-- Check the [Illumos Installer repository](https://github.com/illumos/installer) for known issues
+- Check the [Illumos Installer repository](https://github.com/toasterson/installer) for known issues
 - Search for similar issues in the issue tracker
 - Ask for help in the Illumos community forums or mailing lists
 - File a bug report if you believe you've found a bug
