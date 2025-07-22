@@ -42,12 +42,15 @@ pub const DEVICE_PREFIX: &str = "\\\\.\\";
 pub const DEVICE_PREFIX: &str = "/dev/dsk/";
 
 /// Create a bootable USB stick with EFI boot files
+/// 
+/// Returns the mount point of the USB device and whether a loop device was used
 pub async fn create_bootable_usb(
     device: &str,
     oci_image: Option<&str>,
     size_gb: u64,
     assets_url: Option<&str>,
-) -> Result<(), Error> {
+    cleanup_loop: bool,
+) -> Result<(PathBuf, bool, String), Error> {
     // Load configuration
     let config = InstallAdmConfig::load()
         .map_err(|e| Error::CommandError(format!("Failed to load configuration: {}", e)))?;
@@ -84,13 +87,13 @@ pub async fn create_bootable_usb(
         download_oci_image(image, &mount_point).await?;
     }
 
-    // Clean up loop device if we created one
-    if using_loop {
+    // Clean up loop device if we created one and cleanup is requested
+    if using_loop && cleanup_loop {
         cleanup_loop_device(&actual_device)?;
     }
 
     println!("Bootable USB created successfully!");
-    Ok(())
+    Ok((mount_point, using_loop, actual_device))
 }
 
 /// Check if required tools are available
@@ -832,13 +835,13 @@ pub async fn testrun_installer(
     which("virt-install").map_err(|_| Error::ToolNotFound("virt-install".to_string()))?;
 
     // Create or use existing bootable USB
+    // Don't clean up the loop device as we need it for the VM
     println!("Setting up bootable USB for testrun...");
-    create_bootable_usb(device, oci_image, size_gb, assets_url).await?;
-
-    // Get mount point of the USB
+    let (mount_point, using_loop, actual_device) = 
+        create_bootable_usb(device, oci_image, size_gb, assets_url, false).await?;
+    
+    // We already have the mount point from create_bootable_usb
     let device_path = normalize_device_path(device)?;
-    let (actual_device, using_loop) = ensure_device_exists(&device_path, size_gb)?;
-    let mount_point = get_mount_point(&actual_device)?;
 
 
     // Generate or copy config file to USB

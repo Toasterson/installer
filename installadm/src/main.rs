@@ -409,7 +409,8 @@ async fn main() -> Result<()> {
             assets_url,
         } => {
             println!("Creating bootable USB stick on device: {}", device);
-            usb::create_bootable_usb(&device, oci_image.as_deref(), size, assets_url.as_deref())
+            // For regular bootable USB creation, we want to clean up the loop device
+            let _ = usb::create_bootable_usb(&device, oci_image.as_deref(), size, assets_url.as_deref(), true)
                 .await?;
         },
         Commands::TestrunInstaller {
