@@ -1,0 +1,13 @@
+[book]
+title = "illumos Installer Documentation"
+authors = ["illumos Installer Team"]
+description = "Documentation for the illumos Installer configuration"
+language = "en"
+multilingual = false
+src = "src"
+
+[output.html]
+default-theme = "light"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/illumos/installer"
+edit-url-template = "https://github.com/illumos/installer/edit/main/installer-docs/{path}"
