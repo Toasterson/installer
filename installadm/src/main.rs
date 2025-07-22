@@ -1,6 +1,6 @@
 use crate::machined::claim_request::ClaimSecret;
 use crate::machined::machine_service_client::MachineServiceClient;
-use crate::machined::{ClaimRequest, InstallConfig};
+use crate::machined::{ClaimRequest, InstallConfig, SystemInfoRequest};
 use crate::state::{read_state_file, save_state, Server};
 use clap::{Parser, Subcommand};
 use miette::Diagnostic;
@@ -81,6 +81,14 @@ enum Commands {
         name: String,
         #[arg(short, long)]
         config: PathBuf,
+    },
+    /// Retrieve system information from a machined server
+    ///
+    /// This command connects to a machined server and retrieves information about
+    /// the system, including disk and network interface details.
+    SystemInfo {
+        /// Name of the server to connect to
+        name: String,
     },
     /// Create a bootable USB stick with EFI boot files
     ///
@@ -188,6 +196,212 @@ async fn main() -> Result<()> {
                 println!("{}: {:?}", progress.level, progress.message);
             }
         }
+        Commands::SystemInfo { name } => {
+            let server = state.get_server(&name).ok_or(Error::NoSuchServer)?;
+            let mut client = connect(server.uri.as_str()).await?;
+            
+            println!("Retrieving system information from server: {}", name);
+            let request = tonic::Request::new(SystemInfoRequest {});
+            let response = client.get_system_info(request).await?;
+            let system_info = response.into_inner();
+            
+            // Display disk information
+            println!("\nDisk Information:");
+            println!("{:<10} {:<15} {:<20} {:<15} {:<10} {:<10} {:<15} {:<5} {:<5} {:<10}", 
+                     "Device", "Vendor", "Product", "Size", "Removable", "SSD", "Serial", "FLT", "LOC", "Location");
+            println!("{:-<120}", "");
+            
+            for disk in system_info.disks {
+                // Convert size to human-readable format
+                let size = format_size(disk.size_bytes);
+                
+                println!("{:<10} {:<15} {:<20} {:<15} {:<10} {:<10} {:<15} {:<5} {:<5} {:<10}", 
+                         disk.device, 
+                         disk.vendor, 
+                         disk.product, 
+                         size,
+                         if disk.removable { "Yes" } else { "No" },
+                         if disk.solid_state { "Yes" } else { "No" },
+                         disk.serial,
+                         disk.fault_status,
+                         disk.location_code,
+                         disk.chassis_bay);
+            }
+            
+            // Display network interface information
+            println!("\nNetwork Interface Information:");
+            println!("{:<10} {:<10} {:<10} {:<10} {:<15} {:<10} {:<20}", 
+                     "Name", "Class", "Media", "State", "Speed", "MTU", "MAC Address");
+            println!("{:-<100}", "");
+            
+            for interface in system_info.network_interfaces {
+                println!("{:<10} {:<10} {:<10} {:<10} {:<15} {:<10} {:<20}", 
+                         interface.name, 
+                         interface.class, 
+                         interface.media, 
+                         interface.state, 
+                         interface.speed,
+                         interface.mtu,
+                         interface.mac_address);
+            }
+            
+            // Display SMBIOS information if available
+            if let Some(smbios) = &system_info.smbios {
+                // Display BIOS information
+                if let Some(bios) = &smbios.bios {
+                    println!("\nBIOS Information:");
+                    println!("Vendor: {}", bios.vendor);
+                    println!("Version: {}", bios.version);
+                    println!("Release Date: {}", bios.release_date);
+                    println!("Address Segment: {}", bios.address_segment);
+                    println!("ROM Size: {} bytes", bios.rom_size);
+                    println!("Image Size: {} bytes", bios.image_size);
+                    println!("Characteristics: 0x{:x}", bios.characteristics);
+                    println!("Characteristics Extension Byte 1: 0x{:x}", bios.characteristics_ext1);
+                    println!("Characteristics Extension Byte 2: 0x{:x}", bios.characteristics_ext2);
+                    println!("Version Number: {}", bios.version_number);
+                }
+                
+                // Display System information
+                if let Some(system) = &smbios.system {
+                    println!("\nSystem Information:");
+                    println!("Manufacturer: {}", system.manufacturer);
+                    println!("Product: {}", system.product);
+                    println!("Version: {}", system.version);
+                    println!("Serial Number: {}", system.serial_number);
+                    println!("UUID: {}", system.uuid);
+                    println!("Wake-Up Event: 0x{:x}", system.wakeup_event);
+                    println!("SKU Number: {}", system.sku_number);
+                    println!("Family: {}", system.family);
+                }
+                
+                // Display Baseboard information
+                if let Some(baseboard) = &smbios.baseboard {
+                    println!("\nBaseboard Information:");
+                    println!("Manufacturer: {}", baseboard.manufacturer);
+                    println!("Product: {}", baseboard.product);
+                    println!("Version: {}", baseboard.version);
+                    println!("Serial Number: {}", baseboard.serial_number);
+                    println!("Asset Tag: {}", baseboard.asset_tag);
+                    println!("Location Tag: {}", baseboard.location_tag);
+                    println!("Chassis: {}", baseboard.chassis);
+                    println!("Flags: 0x{:x}", baseboard.flags);
+                    println!("Board Type: 0x{:x}", baseboard.board_type);
+                }
+                
+                // Display Chassis information
+                if let Some(chassis) = &smbios.chassis {
+                    println!("\nChassis Information:");
+                    println!("Manufacturer: {}", chassis.manufacturer);
+                    println!("Version: {}", chassis.version);
+                    println!("Serial Number: {}", chassis.serial_number);
+                    println!("Asset Tag: {}", chassis.asset_tag);
+                    println!("OEM Data: 0x{:x}", chassis.oem_data);
+                    println!("SKU Number: {}", chassis.sku_number);
+                    println!("Lock Present: {}", if chassis.lock_present { "Yes" } else { "No" });
+                    println!("Chassis Type: 0x{:x}", chassis.chassis_type);
+                    println!("Boot-Up State: 0x{:x}", chassis.boot_up_state);
+                    println!("Power Supply State: 0x{:x}", chassis.power_supply_state);
+                    println!("Thermal State: 0x{:x}", chassis.thermal_state);
+                    println!("Chassis Height: {}u", chassis.chassis_height);
+                    println!("Power Cords: {}", chassis.power_cords);
+                    println!("Element Records: {}", chassis.element_records);
+                }
+                
+                // Display Processor information
+                if !smbios.processors.is_empty() {
+                    println!("\nProcessor Information:");
+                    for (i, processor) in smbios.processors.iter().enumerate() {
+                        println!("Processor #{}", i);
+                        println!("  Manufacturer: {}", processor.manufacturer);
+                        println!("  Version: {}", processor.version);
+                        println!("  Serial Number: {}", processor.serial_number);
+                        println!("  Asset Tag: {}", processor.asset_tag);
+                        println!("  Location Tag: {}", processor.location_tag);
+                        println!("  Part Number: {}", processor.part_number);
+                        println!("  Family: {}", processor.family);
+                        println!("  CPUID: 0x{:x}", processor.cpuid);
+                        println!("  Type: {}", processor.r#type);
+                        println!("  Socket Upgrade: {}", processor.socket_upgrade);
+                        println!("  Socket Populated: {}", if processor.socket_populated { "Yes" } else { "No" });
+                        println!("  Processor Status: {}", processor.processor_status);
+                        println!("  Supported Voltages: {}", processor.supported_voltages);
+                        println!("  Core Count: {}", processor.core_count);
+                        println!("  Cores Enabled: {}", processor.cores_enabled);
+                        println!("  Thread Count: {}", processor.thread_count);
+                        println!("  Processor Characteristics: 0x{:x}", processor.processor_characteristics);
+                        println!("  External Clock Speed: {}", processor.external_clock);
+                        println!("  Maximum Speed: {}", processor.maximum_speed);
+                        println!("  Current Speed: {}", processor.current_speed);
+                        println!("  L1 Cache Handle: {}", processor.l1_cache_handle);
+                        println!("  L2 Cache Handle: {}", processor.l2_cache_handle);
+                        println!("  L3 Cache Handle: {}", processor.l3_cache_handle);
+                        println!("  Threads Enabled: {}", processor.threads_enabled);
+                    }
+                }
+                
+                // Display Memory Array information
+                if !smbios.memory_arrays.is_empty() {
+                    println!("\nMemory Array Information:");
+                    for (i, memory_array) in smbios.memory_arrays.iter().enumerate() {
+                        println!("Memory Array #{}", i);
+                        println!("  Location: {}", memory_array.location);
+                        println!("  Use: {}", memory_array.r#use);
+                        println!("  ECC: {}", memory_array.ecc);
+                        println!("  Number of Slots/Sockets: {}", memory_array.slots);
+                        println!("  Max Capacity: {} bytes", memory_array.max_capacity);
+                    }
+                }
+                
+                // Display Memory Device information
+                if !smbios.memory_devices.is_empty() {
+                    println!("\nMemory Device Information:");
+                    for (i, memory_device) in smbios.memory_devices.iter().enumerate() {
+                        println!("Memory Device #{}", i);
+                        println!("  Manufacturer: {}", memory_device.manufacturer);
+                        println!("  Serial Number: {}", memory_device.serial_number);
+                        println!("  Asset Tag: {}", memory_device.asset_tag);
+                        println!("  Location Tag: {}", memory_device.location_tag);
+                        println!("  Part Number: {}", memory_device.part_number);
+                        println!("  Physical Memory Array: {}", memory_device.array_handle);
+                        println!("  Memory Error Data: {}", memory_device.error_handle);
+                        println!("  Total Width: {} bits", memory_device.total_width);
+                        println!("  Data Width: {} bits", memory_device.data_width);
+                        println!("  Size: {} bytes", memory_device.size);
+                        println!("  Form Factor: {}", memory_device.form_factor);
+                        println!("  Set: {}", memory_device.set);
+                        println!("  Rank: {}", memory_device.rank);
+                        println!("  Memory Type: {}", memory_device.memory_type);
+                        println!("  Flags: 0x{:x}", memory_device.flags);
+                        println!("  Speed: {}", memory_device.speed);
+                        println!("  Configured Speed: {}", memory_device.configured_speed);
+                        println!("  Device Locator: {}", memory_device.device_locator);
+                        println!("  Bank Locator: {}", memory_device.bank_locator);
+                        println!("  Minimum Voltage: {}", memory_device.min_voltage);
+                        println!("  Maximum Voltage: {}", memory_device.max_voltage);
+                        println!("  Configured Voltage: {}", memory_device.configured_voltage);
+                    }
+                }
+                
+                // Display Memory Array Mapped Address information
+                if !smbios.memory_array_mapped_addresses.is_empty() {
+                    println!("\nMemory Array Mapped Address Information:");
+                    for (i, memory_array_mapped_address) in smbios.memory_array_mapped_addresses.iter().enumerate() {
+                        println!("Memory Array Mapped Address #{}", i);
+                        println!("  Physical Memory Array: {}", memory_array_mapped_address.array_handle);
+                        println!("  Devices per Row: {}", memory_array_mapped_address.devices_per_row);
+                        println!("  Physical Address: 0x{:x}", memory_array_mapped_address.physical_address);
+                        println!("  Size: {} bytes", memory_array_mapped_address.size);
+                    }
+                }
+                
+                // Display Boot information
+                if let Some(boot) = &smbios.boot {
+                    println!("\nSystem Boot Information:");
+                    println!("Boot Status Code: 0x{:x}", boot.status_code);
+                }
+            }
+        }
         Commands::CreateBootableUsb {
             device,
             oci_image,
@@ -233,4 +447,24 @@ async fn connect(url: &str) -> Result<MachineServiceClient<Channel>> {
         .send_compressed(CompressionEncoding::Zstd)
         .accept_compressed(CompressionEncoding::Zstd);
     Ok(client)
+}
+
+/// Format a size in bytes to a human-readable string
+fn format_size(size_bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    const TB: u64 = GB * 1024;
+
+    if size_bytes < KB {
+        format!("{} B", size_bytes)
+    } else if size_bytes < MB {
+        format!("{:.1} KB", size_bytes as f64 / KB as f64)
+    } else if size_bytes < GB {
+        format!("{:.1} MB", size_bytes as f64 / MB as f64)
+    } else if size_bytes < TB {
+        format!("{:.1} GB", size_bytes as f64 / GB as f64)
+    } else {
+        format!("{:.1} TB", size_bytes as f64 / TB as f64)
+    }
 }

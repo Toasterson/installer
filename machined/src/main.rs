@@ -4,6 +4,7 @@ mod platform;
 mod config;
 mod devprop;
 mod error;
+mod sysinfo;
 mod process;
 mod util;
 
@@ -11,7 +12,7 @@ use crate::config::{load_config, MachinedConfig};
 use crate::machined::claim_request::ClaimSecret;
 use crate::machined::install_progress;
 use crate::machined::machine_service_server::MachineServiceServer;
-use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress};
+use crate::machined::{ClaimRequest, ClaimResponse, InstallConfig, InstallProgress, SystemInfoRequest, SystemInfoResponse};
 use base64::Engine;
 use jwt_simple::prelude::*;
 use machineconfig::MachineConfig;
@@ -101,6 +102,17 @@ impl MachineService for Svc {
             Ok(Response::new(Box::pin(output_stream)))
         } else {
             Err(Status::not_found("Missing authorization header"))
+        }
+    }
+    
+    async fn get_system_info(
+        &self,
+        _request: Request<SystemInfoRequest>,
+    ) -> Result<Response<SystemInfoResponse>, Status> {
+        // Call the get_system_info function from the sysinfo module
+        match crate::sysinfo::get_system_info() {
+            Ok(system_info) => Ok(Response::new(system_info)),
+            Err(status) => Err(status),
         }
     }
 }

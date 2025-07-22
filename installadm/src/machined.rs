@@ -41,6 +41,452 @@ pub mod install_progress {
         Error(::prost::alloc::string::String),
     }
 }
+/// Request message for GetSystemInfo RPC
+///
+/// Empty for now, may add filters or options in the future
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SystemInfoRequest {}
+/// Disk information structure
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DiskInfo {
+    /// Device name (e.g., c0t0d0)
+    #[prost(string, tag = "1")]
+    pub device: ::prost::alloc::string::String,
+    /// Vendor name
+    #[prost(string, tag = "2")]
+    pub vendor: ::prost::alloc::string::String,
+    /// Product name
+    #[prost(string, tag = "3")]
+    pub product: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "4")]
+    pub serial: ::prost::alloc::string::String,
+    /// Size in bytes
+    #[prost(uint64, tag = "5")]
+    pub size_bytes: u64,
+    /// Whether the disk is removable
+    #[prost(bool, tag = "6")]
+    pub removable: bool,
+    /// Whether the disk is solid state (SSD)
+    #[prost(bool, tag = "7")]
+    pub solid_state: bool,
+    /// All paths to this disk
+    #[prost(string, repeated, tag = "8")]
+    pub paths: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Fault status (FLT column in diskinfo -P output)
+    #[prost(string, tag = "9")]
+    pub fault_status: ::prost::alloc::string::String,
+    /// Location code (LOC column in diskinfo -P output)
+    #[prost(string, tag = "10")]
+    pub location_code: ::prost::alloc::string::String,
+    /// Physical location (LOCATION column in diskinfo -P output)
+    #[prost(string, tag = "11")]
+    pub chassis_bay: ::prost::alloc::string::String,
+}
+/// Network interface information structure
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct NetworkInterface {
+    /// Interface name (e.g., net0)
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Physical link name
+    #[prost(string, tag = "2")]
+    pub link: ::prost::alloc::string::String,
+    /// Interface class
+    #[prost(string, tag = "3")]
+    pub class: ::prost::alloc::string::String,
+    /// Media type
+    #[prost(string, tag = "4")]
+    pub media: ::prost::alloc::string::String,
+    /// Link state
+    #[prost(string, tag = "5")]
+    pub state: ::prost::alloc::string::String,
+    /// Link speed
+    #[prost(string, tag = "6")]
+    pub speed: ::prost::alloc::string::String,
+    /// MAC address
+    #[prost(string, tag = "7")]
+    pub mac_address: ::prost::alloc::string::String,
+    /// Whether this is a virtual interface
+    #[prost(bool, tag = "8")]
+    pub over: bool,
+    /// MTU size
+    #[prost(string, tag = "9")]
+    pub mtu: ::prost::alloc::string::String,
+}
+/// BIOS information structure (SMBIOS Type 0)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BiosInfo {
+    /// Vendor name
+    #[prost(string, tag = "1")]
+    pub vendor: ::prost::alloc::string::String,
+    /// Version string
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+    /// Release date
+    #[prost(string, tag = "3")]
+    pub release_date: ::prost::alloc::string::String,
+    /// Address segment
+    #[prost(string, tag = "4")]
+    pub address_segment: ::prost::alloc::string::String,
+    /// ROM size in bytes
+    #[prost(uint32, tag = "5")]
+    pub rom_size: u32,
+    /// Image size in bytes
+    #[prost(uint32, tag = "6")]
+    pub image_size: u32,
+    /// BIOS characteristics
+    #[prost(uint32, tag = "7")]
+    pub characteristics: u32,
+    /// Characteristics extension byte 1
+    #[prost(uint32, tag = "8")]
+    pub characteristics_ext1: u32,
+    /// Characteristics extension byte 2
+    #[prost(uint32, tag = "9")]
+    pub characteristics_ext2: u32,
+    /// Version number
+    #[prost(string, tag = "10")]
+    pub version_number: ::prost::alloc::string::String,
+}
+/// System information structure (SMBIOS Type 1)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SystemInfo {
+    /// Manufacturer name
+    #[prost(string, tag = "1")]
+    pub manufacturer: ::prost::alloc::string::String,
+    /// Product name
+    #[prost(string, tag = "2")]
+    pub product: ::prost::alloc::string::String,
+    /// Version
+    #[prost(string, tag = "3")]
+    pub version: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "4")]
+    pub serial_number: ::prost::alloc::string::String,
+    /// UUID
+    #[prost(string, tag = "5")]
+    pub uuid: ::prost::alloc::string::String,
+    /// Wake-up event
+    #[prost(uint32, tag = "6")]
+    pub wakeup_event: u32,
+    /// SKU number
+    #[prost(string, tag = "7")]
+    pub sku_number: ::prost::alloc::string::String,
+    /// Family
+    #[prost(string, tag = "8")]
+    pub family: ::prost::alloc::string::String,
+}
+/// Baseboard information structure (SMBIOS Type 2)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BaseboardInfo {
+    /// Manufacturer name
+    #[prost(string, tag = "1")]
+    pub manufacturer: ::prost::alloc::string::String,
+    /// Product name
+    #[prost(string, tag = "2")]
+    pub product: ::prost::alloc::string::String,
+    /// Version
+    #[prost(string, tag = "3")]
+    pub version: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "4")]
+    pub serial_number: ::prost::alloc::string::String,
+    /// Asset tag
+    #[prost(string, tag = "5")]
+    pub asset_tag: ::prost::alloc::string::String,
+    /// Location tag
+    #[prost(string, tag = "6")]
+    pub location_tag: ::prost::alloc::string::String,
+    /// Chassis
+    #[prost(uint32, tag = "7")]
+    pub chassis: u32,
+    /// Flags
+    #[prost(uint32, tag = "8")]
+    pub flags: u32,
+    /// Board type
+    #[prost(uint32, tag = "9")]
+    pub board_type: u32,
+}
+/// Chassis information structure (SMBIOS Type 3)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ChassisInfo {
+    /// Manufacturer name
+    #[prost(string, tag = "1")]
+    pub manufacturer: ::prost::alloc::string::String,
+    /// Version
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "3")]
+    pub serial_number: ::prost::alloc::string::String,
+    /// Asset tag
+    #[prost(string, tag = "4")]
+    pub asset_tag: ::prost::alloc::string::String,
+    /// OEM data
+    #[prost(uint32, tag = "5")]
+    pub oem_data: u32,
+    /// SKU number
+    #[prost(string, tag = "6")]
+    pub sku_number: ::prost::alloc::string::String,
+    /// Lock present
+    #[prost(bool, tag = "7")]
+    pub lock_present: bool,
+    /// Chassis type
+    #[prost(uint32, tag = "8")]
+    pub chassis_type: u32,
+    /// Boot-up state
+    #[prost(uint32, tag = "9")]
+    pub boot_up_state: u32,
+    /// Power supply state
+    #[prost(uint32, tag = "10")]
+    pub power_supply_state: u32,
+    /// Thermal state
+    #[prost(uint32, tag = "11")]
+    pub thermal_state: u32,
+    /// Chassis height
+    #[prost(uint32, tag = "12")]
+    pub chassis_height: u32,
+    /// Power cords
+    #[prost(uint32, tag = "13")]
+    pub power_cords: u32,
+    /// Element records
+    #[prost(uint32, tag = "14")]
+    pub element_records: u32,
+}
+/// Processor information structure (SMBIOS Type 4)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProcessorInfo {
+    /// Manufacturer name
+    #[prost(string, tag = "1")]
+    pub manufacturer: ::prost::alloc::string::String,
+    /// Version
+    #[prost(string, tag = "2")]
+    pub version: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "3")]
+    pub serial_number: ::prost::alloc::string::String,
+    /// Asset tag
+    #[prost(string, tag = "4")]
+    pub asset_tag: ::prost::alloc::string::String,
+    /// Location tag
+    #[prost(string, tag = "5")]
+    pub location_tag: ::prost::alloc::string::String,
+    /// Part number
+    #[prost(string, tag = "6")]
+    pub part_number: ::prost::alloc::string::String,
+    /// Family
+    #[prost(uint32, tag = "7")]
+    pub family: u32,
+    /// CPUID
+    #[prost(uint32, tag = "8")]
+    pub cpuid: u32,
+    /// Type
+    #[prost(uint32, tag = "9")]
+    pub r#type: u32,
+    /// Socket upgrade
+    #[prost(uint32, tag = "10")]
+    pub socket_upgrade: u32,
+    /// Socket populated
+    #[prost(bool, tag = "11")]
+    pub socket_populated: bool,
+    /// Processor status
+    #[prost(uint32, tag = "12")]
+    pub processor_status: u32,
+    /// Supported voltages
+    #[prost(string, tag = "13")]
+    pub supported_voltages: ::prost::alloc::string::String,
+    /// Core count
+    #[prost(uint32, tag = "14")]
+    pub core_count: u32,
+    /// Cores enabled
+    #[prost(uint32, tag = "15")]
+    pub cores_enabled: u32,
+    /// Thread count
+    #[prost(uint32, tag = "16")]
+    pub thread_count: u32,
+    /// Processor characteristics
+    #[prost(uint32, tag = "17")]
+    pub processor_characteristics: u32,
+    /// External clock speed
+    #[prost(string, tag = "18")]
+    pub external_clock: ::prost::alloc::string::String,
+    /// Maximum speed
+    #[prost(string, tag = "19")]
+    pub maximum_speed: ::prost::alloc::string::String,
+    /// Current speed
+    #[prost(string, tag = "20")]
+    pub current_speed: ::prost::alloc::string::String,
+    /// L1 cache handle
+    #[prost(uint32, tag = "21")]
+    pub l1_cache_handle: u32,
+    /// L2 cache handle
+    #[prost(uint32, tag = "22")]
+    pub l2_cache_handle: u32,
+    /// L3 cache handle
+    #[prost(uint32, tag = "23")]
+    pub l3_cache_handle: u32,
+    /// Threads enabled
+    #[prost(uint32, tag = "24")]
+    pub threads_enabled: u32,
+}
+/// Memory array information structure (SMBIOS Type 16)
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct MemoryArrayInfo {
+    /// Location
+    #[prost(uint32, tag = "1")]
+    pub location: u32,
+    /// Use
+    #[prost(uint32, tag = "2")]
+    pub r#use: u32,
+    /// ECC
+    #[prost(uint32, tag = "3")]
+    pub ecc: u32,
+    /// Number of slots/sockets
+    #[prost(uint32, tag = "4")]
+    pub slots: u32,
+    /// Maximum capacity in bytes
+    #[prost(uint64, tag = "5")]
+    pub max_capacity: u64,
+}
+/// Memory device information structure (SMBIOS Type 17)
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MemoryDeviceInfo {
+    /// Manufacturer name
+    #[prost(string, tag = "1")]
+    pub manufacturer: ::prost::alloc::string::String,
+    /// Serial number
+    #[prost(string, tag = "2")]
+    pub serial_number: ::prost::alloc::string::String,
+    /// Asset tag
+    #[prost(string, tag = "3")]
+    pub asset_tag: ::prost::alloc::string::String,
+    /// Location tag
+    #[prost(string, tag = "4")]
+    pub location_tag: ::prost::alloc::string::String,
+    /// Part number
+    #[prost(string, tag = "5")]
+    pub part_number: ::prost::alloc::string::String,
+    /// Physical memory array handle
+    #[prost(uint32, tag = "6")]
+    pub array_handle: u32,
+    /// Memory error data handle
+    #[prost(uint32, tag = "7")]
+    pub error_handle: u32,
+    /// Total width in bits
+    #[prost(uint32, tag = "8")]
+    pub total_width: u32,
+    /// Data width in bits
+    #[prost(uint32, tag = "9")]
+    pub data_width: u32,
+    /// Size in bytes
+    #[prost(uint64, tag = "10")]
+    pub size: u64,
+    /// Form factor
+    #[prost(uint32, tag = "11")]
+    pub form_factor: u32,
+    /// Set
+    #[prost(uint32, tag = "12")]
+    pub set: u32,
+    /// Rank
+    #[prost(uint32, tag = "13")]
+    pub rank: u32,
+    /// Memory type
+    #[prost(uint32, tag = "14")]
+    pub memory_type: u32,
+    /// Flags
+    #[prost(uint32, tag = "15")]
+    pub flags: u32,
+    /// Speed
+    #[prost(string, tag = "16")]
+    pub speed: ::prost::alloc::string::String,
+    /// Configured speed
+    #[prost(string, tag = "17")]
+    pub configured_speed: ::prost::alloc::string::String,
+    /// Device locator
+    #[prost(string, tag = "18")]
+    pub device_locator: ::prost::alloc::string::String,
+    /// Bank locator
+    #[prost(string, tag = "19")]
+    pub bank_locator: ::prost::alloc::string::String,
+    /// Minimum voltage
+    #[prost(string, tag = "20")]
+    pub min_voltage: ::prost::alloc::string::String,
+    /// Maximum voltage
+    #[prost(string, tag = "21")]
+    pub max_voltage: ::prost::alloc::string::String,
+    /// Configured voltage
+    #[prost(string, tag = "22")]
+    pub configured_voltage: ::prost::alloc::string::String,
+}
+/// Memory array mapped address information structure (SMBIOS Type 19)
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct MemoryArrayMappedAddressInfo {
+    /// Physical memory array handle
+    #[prost(uint32, tag = "1")]
+    pub array_handle: u32,
+    /// Devices per row
+    #[prost(uint32, tag = "2")]
+    pub devices_per_row: u32,
+    /// Physical address
+    #[prost(uint64, tag = "3")]
+    pub physical_address: u64,
+    /// Size in bytes
+    #[prost(uint64, tag = "4")]
+    pub size: u64,
+}
+/// System boot information structure (SMBIOS Type 32)
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct SystemBootInfo {
+    /// Boot status code
+    #[prost(uint32, tag = "1")]
+    pub status_code: u32,
+}
+/// SMBIOS information structure
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SmbiosInfo {
+    /// BIOS information
+    #[prost(message, optional, tag = "1")]
+    pub bios: ::core::option::Option<BiosInfo>,
+    /// System information
+    #[prost(message, optional, tag = "2")]
+    pub system: ::core::option::Option<SystemInfo>,
+    /// Baseboard information
+    #[prost(message, optional, tag = "3")]
+    pub baseboard: ::core::option::Option<BaseboardInfo>,
+    /// Chassis information
+    #[prost(message, optional, tag = "4")]
+    pub chassis: ::core::option::Option<ChassisInfo>,
+    /// Processor information
+    #[prost(message, repeated, tag = "5")]
+    pub processors: ::prost::alloc::vec::Vec<ProcessorInfo>,
+    /// Memory array information
+    #[prost(message, repeated, tag = "6")]
+    pub memory_arrays: ::prost::alloc::vec::Vec<MemoryArrayInfo>,
+    /// Memory device information
+    #[prost(message, repeated, tag = "7")]
+    pub memory_devices: ::prost::alloc::vec::Vec<MemoryDeviceInfo>,
+    /// Memory array mapped address information
+    #[prost(message, repeated, tag = "8")]
+    pub memory_array_mapped_addresses: ::prost::alloc::vec::Vec<
+        MemoryArrayMappedAddressInfo,
+    >,
+    /// System boot information
+    #[prost(message, optional, tag = "9")]
+    pub boot: ::core::option::Option<SystemBootInfo>,
+}
+/// Response message for GetSystemInfo RPC
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SystemInfoResponse {
+    /// List of disks
+    #[prost(message, repeated, tag = "1")]
+    pub disks: ::prost::alloc::vec::Vec<DiskInfo>,
+    /// List of network interfaces
+    #[prost(message, repeated, tag = "2")]
+    pub network_interfaces: ::prost::alloc::vec::Vec<NetworkInterface>,
+    /// SMBIOS information
+    #[prost(message, optional, tag = "3")]
+    pub smbios: ::core::option::Option<SmbiosInfo>,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ProgressLevel {
@@ -209,6 +655,30 @@ pub mod machine_service_client {
                 .insert(GrpcMethod::new("machined.MachineService", "Install"));
             self.inner.server_streaming(req, path, codec).await
         }
+        pub async fn get_system_info(
+            &mut self,
+            request: impl tonic::IntoRequest<super::SystemInfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SystemInfoResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/machined.MachineService/GetSystemInfo",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("machined.MachineService", "GetSystemInfo"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -238,6 +708,13 @@ pub mod machine_service_server {
             &self,
             request: tonic::Request<super::InstallConfig>,
         ) -> std::result::Result<tonic::Response<Self::InstallStream>, tonic::Status>;
+        async fn get_system_info(
+            &self,
+            request: tonic::Request<super::SystemInfoRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::SystemInfoResponse>,
+            tonic::Status,
+        >;
     }
     #[derive(Debug)]
     pub struct MachineServiceServer<T> {
@@ -401,6 +878,52 @@ pub mod machine_service_server {
                                 max_encoding_message_size,
                             );
                         let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/machined.MachineService/GetSystemInfo" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetSystemInfoSvc<T: MachineService>(pub Arc<T>);
+                    impl<
+                        T: MachineService,
+                    > tonic::server::UnaryService<super::SystemInfoRequest>
+                    for GetSystemInfoSvc<T> {
+                        type Response = super::SystemInfoResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::SystemInfoRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as MachineService>::get_system_info(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetSystemInfoSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)

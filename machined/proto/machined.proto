@@ -32,7 +32,194 @@ message InstallProgress {
   }
 }
 
+// Request message for GetSystemInfo RPC
+message SystemInfoRequest {
+  // Empty for now, may add filters or options in the future
+}
+
+// Disk information structure
+message DiskInfo {
+  string device = 1;        // Device name (e.g., c0t0d0)
+  string vendor = 2;        // Vendor name
+  string product = 3;       // Product name
+  string serial = 4;        // Serial number
+  uint64 size_bytes = 5;    // Size in bytes
+  bool removable = 6;       // Whether the disk is removable
+  bool solid_state = 7;     // Whether the disk is solid state (SSD)
+  repeated string paths = 8; // All paths to this disk
+  string fault_status = 9;  // Fault status (FLT column in diskinfo -P output)
+  string location_code = 10; // Location code (LOC column in diskinfo -P output)
+  string chassis_bay = 11;  // Physical location (LOCATION column in diskinfo -P output)
+}
+
+// Network interface information structure
+message NetworkInterface {
+  string name = 1;          // Interface name (e.g., net0)
+  string link = 2;          // Physical link name
+  string class = 3;         // Interface class
+  string media = 4;         // Media type
+  string state = 5;         // Link state
+  string speed = 6;         // Link speed
+  string mac_address = 7;   // MAC address
+  bool over = 8;            // Whether this is a virtual interface
+  string mtu = 9;           // MTU size
+}
+
+// BIOS information structure (SMBIOS Type 0)
+message BiosInfo {
+  string vendor = 1;           // Vendor name
+  string version = 2;          // Version string
+  string release_date = 3;     // Release date
+  string address_segment = 4;  // Address segment
+  uint32 rom_size = 5;         // ROM size in bytes
+  uint32 image_size = 6;       // Image size in bytes
+  uint32 characteristics = 7;  // BIOS characteristics
+  uint32 characteristics_ext1 = 8; // Characteristics extension byte 1
+  uint32 characteristics_ext2 = 9; // Characteristics extension byte 2
+  string version_number = 10;  // Version number
+}
+
+// System information structure (SMBIOS Type 1)
+message SystemInfo {
+  string manufacturer = 1;     // Manufacturer name
+  string product = 2;          // Product name
+  string version = 3;          // Version
+  string serial_number = 4;    // Serial number
+  string uuid = 5;             // UUID
+  uint32 wakeup_event = 6;     // Wake-up event
+  string sku_number = 7;       // SKU number
+  string family = 8;           // Family
+}
+
+// Baseboard information structure (SMBIOS Type 2)
+message BaseboardInfo {
+  string manufacturer = 1;     // Manufacturer name
+  string product = 2;          // Product name
+  string version = 3;          // Version
+  string serial_number = 4;    // Serial number
+  string asset_tag = 5;        // Asset tag
+  string location_tag = 6;     // Location tag
+  uint32 chassis = 7;          // Chassis
+  uint32 flags = 8;            // Flags
+  uint32 board_type = 9;       // Board type
+}
+
+// Chassis information structure (SMBIOS Type 3)
+message ChassisInfo {
+  string manufacturer = 1;     // Manufacturer name
+  string version = 2;          // Version
+  string serial_number = 3;    // Serial number
+  string asset_tag = 4;        // Asset tag
+  uint32 oem_data = 5;         // OEM data
+  string sku_number = 6;       // SKU number
+  bool lock_present = 7;       // Lock present
+  uint32 chassis_type = 8;     // Chassis type
+  uint32 boot_up_state = 9;    // Boot-up state
+  uint32 power_supply_state = 10; // Power supply state
+  uint32 thermal_state = 11;   // Thermal state
+  uint32 chassis_height = 12;  // Chassis height
+  uint32 power_cords = 13;     // Power cords
+  uint32 element_records = 14; // Element records
+}
+
+// Processor information structure (SMBIOS Type 4)
+message ProcessorInfo {
+  string manufacturer = 1;     // Manufacturer name
+  string version = 2;          // Version
+  string serial_number = 3;    // Serial number
+  string asset_tag = 4;        // Asset tag
+  string location_tag = 5;     // Location tag
+  string part_number = 6;      // Part number
+  uint32 family = 7;           // Family
+  uint32 cpuid = 8;            // CPUID
+  uint32 type = 9;             // Type
+  uint32 socket_upgrade = 10;  // Socket upgrade
+  bool socket_populated = 11;  // Socket populated
+  uint32 processor_status = 12; // Processor status
+  string supported_voltages = 13; // Supported voltages
+  uint32 core_count = 14;      // Core count
+  uint32 cores_enabled = 15;   // Cores enabled
+  uint32 thread_count = 16;    // Thread count
+  uint32 processor_characteristics = 17; // Processor characteristics
+  string external_clock = 18;  // External clock speed
+  string maximum_speed = 19;   // Maximum speed
+  string current_speed = 20;   // Current speed
+  uint32 l1_cache_handle = 21; // L1 cache handle
+  uint32 l2_cache_handle = 22; // L2 cache handle
+  uint32 l3_cache_handle = 23; // L3 cache handle
+  uint32 threads_enabled = 24; // Threads enabled
+}
+
+// Memory array information structure (SMBIOS Type 16)
+message MemoryArrayInfo {
+  uint32 location = 1;         // Location
+  uint32 use = 2;              // Use
+  uint32 ecc = 3;              // ECC
+  uint32 slots = 4;            // Number of slots/sockets
+  uint64 max_capacity = 5;     // Maximum capacity in bytes
+}
+
+// Memory device information structure (SMBIOS Type 17)
+message MemoryDeviceInfo {
+  string manufacturer = 1;     // Manufacturer name
+  string serial_number = 2;    // Serial number
+  string asset_tag = 3;        // Asset tag
+  string location_tag = 4;     // Location tag
+  string part_number = 5;      // Part number
+  uint32 array_handle = 6;     // Physical memory array handle
+  uint32 error_handle = 7;     // Memory error data handle
+  uint32 total_width = 8;      // Total width in bits
+  uint32 data_width = 9;       // Data width in bits
+  uint64 size = 10;            // Size in bytes
+  uint32 form_factor = 11;     // Form factor
+  uint32 set = 12;             // Set
+  uint32 rank = 13;            // Rank
+  uint32 memory_type = 14;     // Memory type
+  uint32 flags = 15;           // Flags
+  string speed = 16;           // Speed
+  string configured_speed = 17; // Configured speed
+  string device_locator = 18;  // Device locator
+  string bank_locator = 19;    // Bank locator
+  string min_voltage = 20;     // Minimum voltage
+  string max_voltage = 21;     // Maximum voltage
+  string configured_voltage = 22; // Configured voltage
+}
+
+// Memory array mapped address information structure (SMBIOS Type 19)
+message MemoryArrayMappedAddressInfo {
+  uint32 array_handle = 1;     // Physical memory array handle
+  uint32 devices_per_row = 2;  // Devices per row
+  uint64 physical_address = 3; // Physical address
+  uint64 size = 4;             // Size in bytes
+}
+
+// System boot information structure (SMBIOS Type 32)
+message SystemBootInfo {
+  uint32 status_code = 1;      // Boot status code
+}
+
+// SMBIOS information structure
+message SmbiosInfo {
+  BiosInfo bios = 1;                  // BIOS information
+  SystemInfo system = 2;              // System information
+  BaseboardInfo baseboard = 3;        // Baseboard information
+  ChassisInfo chassis = 4;            // Chassis information
+  repeated ProcessorInfo processors = 5; // Processor information
+  repeated MemoryArrayInfo memory_arrays = 6; // Memory array information
+  repeated MemoryDeviceInfo memory_devices = 7; // Memory device information
+  repeated MemoryArrayMappedAddressInfo memory_array_mapped_addresses = 8; // Memory array mapped address information
+  SystemBootInfo boot = 9;            // System boot information
+}
+
+// Response message for GetSystemInfo RPC
+message SystemInfoResponse {
+  repeated DiskInfo disks = 1;                // List of disks
+  repeated NetworkInterface network_interfaces = 2; // List of network interfaces
+  SmbiosInfo smbios = 3;                     // SMBIOS information
+}
+
 service MachineService {
   rpc Claim(ClaimRequest) returns (ClaimResponse);
   rpc Install(InstallConfig) returns (stream InstallProgress);
+  rpc GetSystemInfo(SystemInfoRequest) returns (SystemInfoResponse);
 }
