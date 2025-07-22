@@ -9,7 +9,7 @@ ociclient = { version = "0.1.0", path = "../ociclient" }
 machineconfig = { version = "0.1.0", path = "../machineconfig" }
 knus = "3.2.0"
 thiserror = "2.0.9"
-tokio = { version = "1.42.0", features = [
+tokio = { version = "1", features = [
     "tokio-macros",
     "rt",
     "rt-multi-thread",
@@ -19,7 +19,7 @@ tonic = { version = "*", features = ["zstd"] }
 prost = "0.13"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-config = "0.15.4"
+config = "0.15"
 serde = { version = "1.0.215", features = ["derive"] }
 nix = { version = "0.29.0", features = ["net"] }
 passwords = "3.1.16"
