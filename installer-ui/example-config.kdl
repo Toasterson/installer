@@ -1,0 +1,68 @@
+// Example illumos installer configuration
+// This file demonstrates the KDL format used by the installer UI
+
+// Define the root storage pool
+pool "rpool" {
+    // Mirror vdev with two disks
+    vdev "mirror" {
+        disks "c5t0d0" "c6t0d0"
+    }
+
+    // Additional RAID-Z vdev for data
+    vdev "raidz2" {
+        disks "c7t0d0" "c8t0d0" "c9t0d0" "c10t0d0"
+    }
+
+    // ZFS pool options
+    options {
+        compression "zstd"
+        dedup "on"
+        atime "off"
+        recordsize "128k"
+    }
+}
+
+// Optional additional pool for logs or cache
+pool "logpool" {
+    vdev "log" {
+        disks "c11t0d0"
+    }
+    options {
+        compression "lz4"
+    }
+}
+
+// OCI image to install
+image "oci://aopc.cloud/openindiana/hipster:2024.12"
+
+// Optional boot environment name
+boot_environment_name "installer-2024-12"
+
+// System configuration
+sysconfig {
+    hostname "illumos-node01"
+
+    // DNS servers
+    nameserver "9.9.9.9"
+    nameserver "149.112.112.112"
+    nameserver "2620:fe::fe"
+
+    // Primary network interface with static configuration
+    interface "net0" selector="mac:00:0c:29:12:34:56" {
+        address name="primary-v4" kind="static" "192.168.1.100/24"
+        address name="primary-v6" kind="static" "2001:db8::100/64"
+        address name="link-local" kind="addrconf"
+    }
+
+    // Secondary interface with DHCP
+    interface "net1" selector="mac:00:0c:29:12:34:57" {
+        address name="dhcp-v4" kind="dhcp4"
+        address name="dhcp-v6" kind="dhcp6"
+        address name="slaac" kind="addrconf"
+    }
+
+    // Management interface
+    interface "net2" selector="mac:00:0c:29:12:34:58" {
+        address name="mgmt" kind="static" "10.0.1.100/24"
+    }
+}
