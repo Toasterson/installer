@@ -3,7 +3,18 @@
 [web.app]
 
 # HTML title tag content
-title = "installer-ui"
+title = "illumos Installer"
+
+[desktop.app]
+# Desktop window configuration
+title = "illumos Installer"
+width = 1024
+height = 768
+min_width = 800
+min_height = 600
+resizable = true
+maximized = false
+decorations = true
 
 # include `assets` in web platform
 [web.resource]

@@ -29,10 +29,51 @@ installer-ui/
 ├─ assets/           # CSS styles and static assets
 │  └─ main.css      # Main stylesheet with installer theme
 ├─ src/
-│  └─ main.rs       # Main application with all components
+│  ├─ main.rs       # Main application entry point
+│  ├─ components/   # UI components organized by functionality
+│  │  ├─ mod.rs     # Component module exports
+│  │  ├─ layout.rs  # MainLayout, navigation, and app structure
+│  │  └─ pages/     # Individual page components
+│  │     ├─ mod.rs  # Page component exports
+│  │     ├─ welcome.rs                # Welcome page
+│  │     ├─ server_selection.rs       # Server selection page
+│  │     ├─ storage_configuration.rs  # Storage configuration page
+│  │     ├─ network_configuration.rs  # Network configuration page
+│  │     ├─ system_configuration.rs   # System configuration page
+│  │     ├─ review_configuration.rs   # Review configuration page
+│  │     └─ installation.rs           # Installation progress page
+│  ├─ routes/       # Route definitions and navigation
+│  │  └─ mod.rs     # Route enum and navigation helpers
+│  ├─ state/        # Application state management
+│  │  └─ mod.rs     # InstallerState and data structures
+│  └─ server/       # Server communication functions
+│     └─ mod.rs     # machined server integration
 ├─ Cargo.toml       # Dependencies and features
 └─ Dioxus.toml      # Dioxus configuration
 ```
+
+## Modular Architecture
+
+The application has been refactored into a clean modular structure:
+
+### Components (`src/components/`)
+- **Layout components**: MainLayout, navigation, progress indicators
+- **Page components**: Individual pages for each installation step
+- **Reusable components**: Cards, forms, validation summaries
+
+### State Management (`src/state/`)
+- **InstallerState**: Central application state
+- **Data structures**: Server, storage, network configuration types
+- **Validation helpers**: Methods for validating configuration steps
+
+### Server Functions (`src/server/`)
+- **Discovery**: Load and discover available machines
+- **Communication**: Claim servers and manage installation
+- **Config conversion**: Transform UI state to machine configuration
+
+### Routing (`src/routes/`)
+- **Route definitions**: All application routes and navigation
+- **Route helpers**: Step validation, progress tracking, navigation utilities
 
 ## Installation Flow
 
@@ -69,6 +110,32 @@ For mobile development:
 ```bash
 dx serve --platform mobile
 ```
+
+### Window Sizing Options
+
+The installer UI is optimized for different window sizes:
+
+#### Using the launcher script:
+```bash
+./launcher.sh           # Interactive menu with presets
+./run.sh --compact      # 900x650 - Good for laptops
+./run.sh --small        # 800x600 - Minimal space
+./run.sh                # 1024x768 - Standard desktop
+./run.sh --large        # 1200x900 - Large monitors
+./run.sh --fullhd       # 1920x1080 - Full HD displays
+```
+
+#### Custom window sizes:
+```bash
+./run.sh --width 1024 --height 600    # Custom dimensions
+./run.sh --platform web               # Web browser (no window size)
+```
+
+The UI automatically adapts to smaller windows with:
+- Compact layouts for windows under 800px height
+- Ultra-compact mode for windows under 500px height
+- Responsive design for mobile devices
+- Optimized content density and spacing
 
 ### Building
 
