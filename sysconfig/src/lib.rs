@@ -1,17 +1,17 @@
+use async_trait::async_trait;
 use miette::Diagnostic;
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::pin::Pin;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use thiserror::Error;
 use tokio::net::UnixListener;
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
 use uuid::Uuid;
-use serde::{Serialize, Deserialize};
-use async_trait::async_trait;
-use std::process::Command;
 
 // Include the generated proto code
 pub mod proto {
@@ -22,7 +22,7 @@ pub mod proto {
 pub use proto::*;
 
 // Separate module for knus parsing to avoid conflicts with our custom Result type
-mod config {
+pub mod config {
     use knus;
     use std::fmt::Debug;
 
@@ -114,7 +114,9 @@ pub enum Error {
     BroadcastRecv(String),
 }
 
-impl<S: std::fmt::Debug + Clone + Send + Sync + Into<knus::span::ErrorSpan> + 'static> From<knus::errors::DecodeError<S>> for Error {
+impl<S: std::fmt::Debug + Clone + Send + Sync + Into<knus::span::ErrorSpan> + 'static>
+    From<knus::errors::DecodeError<S>> for Error
+{
     fn from(err: knus::errors::DecodeError<S>) -> Self {
         Error::Decode(format!("{:?}", err))
     }
@@ -237,7 +239,10 @@ impl SystemState {
                                 arr[index] = value;
                                 return Ok(());
                             } else {
-                                return Err(Error::State(format!("Index out of bounds: {}", index)));
+                                return Err(Error::State(format!(
+                                    "Index out of bounds: {}",
+                                    index
+                                )));
                             }
                         } else {
                             return Err(Error::State(format!("Invalid array index: {}", part)));
@@ -259,7 +264,10 @@ impl SystemState {
                             if index < arr.len() {
                                 current = &mut arr[index];
                             } else {
-                                return Err(Error::State(format!("Index out of bounds: {}", index)));
+                                return Err(Error::State(format!(
+                                    "Index out of bounds: {}",
+                                    index
+                                )));
                             }
                         } else {
                             return Err(Error::State(format!("Invalid array index: {}", part)));
@@ -296,13 +304,21 @@ impl SystemState {
                                 arr.remove(index);
                                 return Ok(());
                             } else {
-                                return Err(Error::State(format!("Index out of bounds: {}", index)));
+                                return Err(Error::State(format!(
+                                    "Index out of bounds: {}",
+                                    index
+                                )));
                             }
                         } else {
                             return Err(Error::State(format!("Invalid array index: {}", part)));
                         }
                     }
-                    _ => return Err(Error::State(format!("Cannot remove value at path: {}", path))),
+                    _ => {
+                        return Err(Error::State(format!(
+                            "Cannot remove value at path: {}",
+                            path
+                        )))
+                    }
                 }
             } else {
                 // Not the last part, navigate to the next level
@@ -356,7 +372,9 @@ impl Stream for StateChangeStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match Pin::new(&mut self.inner).poll_next(cx) {
             Poll::Ready(Some(Ok(event))) => Poll::Ready(Some(Ok(event))),
-            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(tonic::Status::internal(format!("Broadcast receive error: {}", err))))),
+            Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(tonic::Status::internal(
+                format!("Broadcast receive error: {}", err),
+            )))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -419,7 +437,9 @@ impl SysConfigService {
 
                         match tonic::transport::Server::builder()
                             .add_service(svc)
-                            .serve_with_incoming(futures::stream::iter(vec![Ok::<_, std::io::Error>(stream)]))
+                            .serve_with_incoming(futures::stream::iter(vec![
+                                Ok::<_, std::io::Error>(stream),
+                            ]))
                             .await
                         {
                             Ok(_) => tracing::info!("Connection handled successfully"),
@@ -478,7 +498,9 @@ impl SysConfigService {
         let mut locks = self.locks.lock().unwrap();
 
         // Find the lock
-        let index = locks.iter().position(|lock| lock.path == path && lock.plugin_id == plugin_id);
+        let index = locks
+            .iter()
+            .position(|lock| lock.path == path && lock.plugin_id == plugin_id);
 
         if let Some(index) = index {
             // Remove the lock
@@ -527,7 +549,12 @@ impl SysConfigService {
     }
 
     /// Apply a new state to the system
-    pub fn apply_state(&self, state_json: &str, dry_run: bool, plugin_id: &str) -> Result<Vec<StateChange>> {
+    pub fn apply_state(
+        &self,
+        state_json: &str,
+        dry_run: bool,
+        plugin_id: &str,
+    ) -> Result<Vec<StateChange>> {
         let new_state = SystemState::from_json(state_json)?;
         let changes = Vec::new();
 
@@ -538,7 +565,10 @@ impl SysConfigService {
             for lock in locks.iter() {
                 if lock.plugin_id != plugin_id {
                     if let Some(_) = new_state.get(&lock.path) {
-                        return Err(Error::Lock(format!("Path is locked by another plugin: {}", lock.path)));
+                        return Err(Error::Lock(format!(
+                            "Path is locked by another plugin: {}",
+                            lock.path
+                        )));
                     }
                 }
             }
@@ -567,10 +597,16 @@ impl SysConfigService {
     }
 
     /// Execute an action
-    pub fn execute_action(&self, action: &str, parameters: &str, plugin_id: Option<&str>) -> Result<String> {
+    pub fn execute_action(
+        &self,
+        action: &str,
+        parameters: &str,
+        plugin_id: Option<&str>,
+    ) -> Result<String> {
         // Find the plugin to execute the action
         let _plugin = if let Some(plugin_id) = plugin_id {
-            self.get_plugin(plugin_id).ok_or_else(|| Error::Plugin(format!("Plugin not found: {}", plugin_id)))?
+            self.get_plugin(plugin_id)
+                .ok_or_else(|| Error::Plugin(format!("Plugin not found: {}", plugin_id)))?
         } else {
             // Find a plugin that can handle the action
             // For simplicity, we'll just use the first plugin
@@ -584,7 +620,10 @@ impl SysConfigService {
         // Execute the action using the plugin
         // In a real implementation, you would use the plugin's RPC interface
         // For now, we'll just return a dummy result
-        Ok(format!("Action executed: {} with parameters: {}", action, parameters))
+        Ok(format!(
+            "Action executed: {} with parameters: {}",
+            action, parameters
+        ))
     }
 
     /// Subscribe to state changes
@@ -649,14 +688,10 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
                 let state_json = serde_json::to_string(&value)
                     .map_err(|e| tonic::Status::internal(e.to_string()))?;
 
-                let response = GetStateResponse {
-                    state: state_json,
-                };
+                let response = GetStateResponse { state: state_json };
                 Ok(tonic::Response::new(response))
             }
-            Err(e) => {
-                Err(tonic::Status::internal(e.to_string()))
-            }
+            Err(e) => Err(tonic::Status::internal(e.to_string())),
         }
     }
 
@@ -664,7 +699,9 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
         &self,
         request: tonic::Request<ApplyStateRequest>,
     ) -> std::result::Result<tonic::Response<ApplyStateResponse>, tonic::Status> {
-        let plugin_id = request.metadata().get("plugin-id")
+        let plugin_id = request
+            .metadata()
+            .get("plugin-id")
             .map(|v| v.to_str().unwrap_or("unknown"))
             .unwrap_or("unknown")
             .to_string();
@@ -672,14 +709,15 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
 
         match self.apply_state(&req.state, req.dry_run, &plugin_id) {
             Ok(changes) => {
-                let proto_changes = changes.into_iter().map(|c| {
-                    proto::StateChange {
+                let proto_changes = changes
+                    .into_iter()
+                    .map(|c| proto::StateChange {
                         r#type: c.r#type as i32,
                         path: c.path,
                         old_value: c.old_value,
                         new_value: c.new_value,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 let response = ApplyStateResponse {
                     success: true,
@@ -705,7 +743,15 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
     ) -> std::result::Result<tonic::Response<ExecuteActionResponse>, tonic::Status> {
         let req = request.into_inner();
 
-        match self.execute_action(&req.action, &req.parameters, if req.plugin_id.is_empty() { None } else { Some(&req.plugin_id) }) {
+        match self.execute_action(
+            &req.action,
+            &req.parameters,
+            if req.plugin_id.is_empty() {
+                None
+            } else {
+                Some(&req.plugin_id)
+            },
+        ) {
             Ok(result) => {
                 let response = ExecuteActionResponse {
                     success: true,
@@ -751,7 +797,11 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
             Ok(success) => {
                 let response = LockStateResponse {
                     success,
-                    error: if success { "".to_string() } else { "Path is already locked by another plugin".to_string() },
+                    error: if success {
+                        "".to_string()
+                    } else {
+                        "Path is already locked by another plugin".to_string()
+                    },
                 };
                 Ok(tonic::Response::new(response))
             }
@@ -775,7 +825,11 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
             Ok(success) => {
                 let response = UnlockStateResponse {
                     success,
-                    error: if success { "".to_string() } else { "Path is not locked by this plugin".to_string() },
+                    error: if success {
+                        "".to_string()
+                    } else {
+                        "Path is not locked by this plugin".to_string()
+                    },
                 };
                 Ok(tonic::Response::new(response))
             }
@@ -804,7 +858,7 @@ impl PluginClient {
             .connect_with_connector(tower::service_fn(move |_| {
                 let socket_path = socket_path.clone();
                 async move {
-                    use tokio_util::compat::{TokioAsyncWriteCompatExt, FuturesAsyncReadCompatExt};
+                    use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
                     let stream = tokio::net::UnixStream::connect(socket_path).await?;
                     Ok::<_, std::io::Error>(stream.compat_write().compat())
                 }
@@ -844,7 +898,11 @@ impl PluginClient {
     }
 
     /// Diff the current state with the desired state
-    pub async fn diff_state(&mut self, current_state: &str, desired_state: &str) -> Result<Vec<StateChange>> {
+    pub async fn diff_state(
+        &mut self,
+        current_state: &str,
+        desired_state: &str,
+    ) -> Result<Vec<StateChange>> {
         let request = DiffStateRequest {
             current_state: current_state.to_string(),
             desired_state: desired_state.to_string(),
@@ -853,14 +911,16 @@ impl PluginClient {
         let response = self.client.diff_state(request).await?;
         let response = response.into_inner();
 
-        let changes = response.changes.into_iter().map(|c| {
-            StateChange {
+        let changes = response
+            .changes
+            .into_iter()
+            .map(|c| StateChange {
                 r#type: c.r#type,
                 path: c.path,
                 old_value: c.old_value,
                 new_value: c.new_value,
-            }
-        }).collect();
+            })
+            .collect();
 
         Ok(changes)
     }
@@ -876,14 +936,16 @@ impl PluginClient {
         let response = response.into_inner();
 
         if response.success {
-            let changes = response.changes.into_iter().map(|c| {
-                StateChange {
+            let changes = response
+                .changes
+                .into_iter()
+                .map(|c| StateChange {
                     r#type: c.r#type,
                     path: c.path,
                     old_value: c.old_value,
                     new_value: c.new_value,
-                }
-            }).collect();
+                })
+                .collect();
 
             Ok(changes)
         } else {
@@ -910,9 +972,7 @@ impl PluginClient {
 
     /// Notify the plugin of a state change
     pub async fn notify_state_change(&mut self, event: StateChangeEvent) -> Result<()> {
-        let request = NotifyStateChangeRequest {
-            event: Some(event),
-        };
+        let request = NotifyStateChangeRequest { event: Some(event) };
 
         let response = self.client.notify_state_change(request).await?;
         let response = response.into_inner();
@@ -956,15 +1016,15 @@ impl PluginManager {
                 // Return the plugin ID
                 Ok(plugin_id)
             }
-            Err(e) => {
-                Err(Error::Io(e))
-            }
+            Err(e) => Err(Error::Io(e)),
         }
     }
 
     /// Connect to a plugin
     pub async fn connect_to_plugin(&self, plugin_id: &str) -> Result<()> {
-        let plugin = self.service.get_plugin(plugin_id)
+        let plugin = self
+            .service
+            .get_plugin(plugin_id)
             .ok_or_else(|| Error::Plugin(format!("Plugin not found: {}", plugin_id)))?;
 
         // Clone the socket path to satisfy the 'static lifetime requirement
@@ -998,7 +1058,11 @@ pub trait PluginTrait: Send + Sync {
     async fn get_config(&self) -> Result<String>;
 
     /// Diff the current state with the desired state
-    async fn diff_state(&self, current_state: &str, desired_state: &str) -> Result<Vec<StateChange>>;
+    async fn diff_state(
+        &self,
+        current_state: &str,
+        desired_state: &str,
+    ) -> Result<Vec<StateChange>>;
 
     /// Apply a new state
     async fn apply_state(&self, state: &str, dry_run: bool) -> Result<Vec<StateChange>>;
