@@ -1,0 +1,62 @@
+<section class="page">
+  <header class="toolbar">
+    <button type="button" class="ghost" (click)="back()">← Back</button>
+    <h2>Machine Details</h2>
+  </header>
+
+  @if (loading()) {
+    <div class="center"><div class="spinner"></div> Loading…</div>
+  }
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  @if (machine(); as m) {
+    <section class="card">
+      <header class="card-header">
+        <h3>{{ m.name || m.system?.hostname || ('#' + m.id) }}</h3>
+        @if (m.claimed) { <span class="tag ok">claimed</span> } @else { <span class="tag warn">unclaimed</span> }
+      </header>
+      <div class="grid-2">
+        <div>
+          <div class="row"><span class="k">ID</span><span class="v">{{ m.id }}</span></div>
+          <div class="row"><span class="k">Hostname</span><span class="v">{{ m.system?.hostname }}</span></div>
+          <div class="row"><span class="k">OS</span><span class="v">{{ m.system?.osName }} {{ m.system?.osVersion }}</span></div>
+          <div class="row"><span class="k">Kernel</span><span class="v">{{ m.system?.kernel }}</span></div>
+          <div class="row"><span class="k">Arch</span><span class="v">{{ m.system?.arch }}</span></div>
+          <div class="row"><span class="k">CPU</span><span class="v">{{ m.system?.cpuModel }} ({{ m.system?.cpuCores }} cores)</span></div>
+          <div class="row"><span class="k">Memory</span><span class="v">{{ (m.system?.memoryTotalBytes || 0) / (1024*1024*1024) | number:'1.0-1' }} GB</span></div>
+          <div class="row"><span class="k">Uptime</span><span class="v">{{ (m.system?.uptimeSeconds || 0) | number }} s</span></div>
+        </div>
+        <div>
+          <h4>Network Interfaces</h4>
+          <ul class="list">
+            @for (n of (m.system?.nics || []); track n.name) {
+              <li>
+                <div class="row"><span class="k">Name</span><span class="v">{{ n.name }}</span></div>
+                <div class="row"><span class="k">MAC</span><span class="v">{{ n.mac }}</span></div>
+                <div class="row"><span class="k">IPs</span><span class="v">{{ (n.ips || []).join(', ') }}</span></div>
+              </li>
+            }
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h4>Disks</h4>
+      <ul class="list">
+        @for (d of (m.system?.disks || []); track d.name) {
+          <li>
+            <div class="row"><span class="k">Name</span><span class="v">{{ d.name }}</span></div>
+            <div class="row"><span class="k">Model</span><span class="v">{{ d.model }}</span></div>
+            <div class="row"><span class="k">Serial</span><span class="v">{{ d.serial }}</span></div>
+            <div class="row"><span class="k">Size</span><span class="v">{{ (d.sizeBytes || 0) / (1024*1024*1024) | number:'1.0-1' }} GB</span></div>
+          </li>
+        }
+      </ul>
+    </section>
+  } @else {
+    <div class="muted">No machine selected.</div>
+  }
+</section>

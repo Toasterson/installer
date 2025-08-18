@@ -83,6 +83,19 @@ pub struct DiskInfo {
     #[prost(string, tag = "11")]
     pub chassis_bay: ::prost::alloc::string::String,
 }
+/// Partition information structure
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PartitionInfo {
+    /// Partition device name (e.g., c0t0d0s0 or c0t0d0p1)
+    #[prost(string, tag = "1")]
+    pub device: ::prost::alloc::string::String,
+    /// Size in bytes (0 if unknown)
+    #[prost(uint64, tag = "2")]
+    pub size_bytes: u64,
+    /// Parent disk device (e.g., c0t0d0)
+    #[prost(string, tag = "3")]
+    pub parent_device: ::prost::alloc::string::String,
+}
 /// Network interface information structure
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NetworkInterface {
@@ -486,6 +499,9 @@ pub struct SystemInfoResponse {
     /// SMBIOS information
     #[prost(message, optional, tag = "3")]
     pub smbios: ::core::option::Option<SmbiosInfo>,
+    /// List of partitions/slices
+    #[prost(message, repeated, tag = "4")]
+    pub partitions: ::prost::alloc::vec::Vec<PartitionInfo>,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

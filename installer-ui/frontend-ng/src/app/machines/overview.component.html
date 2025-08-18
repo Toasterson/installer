@@ -1,0 +1,62 @@
+<section class="page">
+  <header class="toolbar">
+    <h2>Machines</h2>
+    <div class="spacer"></div>
+    <button type="button" class="primary" (click)="openAdd()">Add machine</button>
+  </header>
+
+  @if (loading()) {
+    <div class="center"><div class="spinner"></div> Loading…</div>
+  }
+  @if (error()) {
+    <div class="error">{{ error() }}</div>
+  }
+
+  <div class="grid">
+    @for (m of machines(); track m.id) {
+      <article class="card" [class.selected]="isSelected(m.id)" (click)="openDetails(m.id)" (dblclick)="$event.stopPropagation(); toggleSelected(m.id)">
+        <header>
+          <h3>{{ m.name || m.system?.hostname || ('#' + m.id) }}</h3>
+          @if (m.claimed) { <span class="tag ok">claimed</span> } @else { <span class="tag warn">unclaimed</span> }
+        </header>
+        <div class="meta">
+          <div class="row">
+            <span class="k">OS</span>
+            <span class="v">{{ m.system?.osName }} {{ m.system?.osVersion }}</span>
+          </div>
+          <div class="row">
+            <span class="k">CPU</span>
+            <span class="v">{{ m.system?.cpuModel }} ({{ m.system?.cpuCores }} cores)</span>
+          </div>
+          <div class="row">
+            <span class="k">Memory</span>
+            <span class="v">{{ (m.system?.memoryTotalBytes || 0) / (1024*1024*1024) | number:'1.0-1' }} GB</span>
+          </div>
+          <div class="row">
+            <span class="k">Arch</span>
+            <span class="v">{{ m.system?.arch }}</span>
+          </div>
+        </div>
+      </article>
+    }
+  </div>
+
+  @if (showAdd()) {
+    <div class="dialog-backdrop" (click)="closeAdd()"></div>
+    <div class="dialog" (click)="$event.stopPropagation()">
+      <header class="dialog-title">Add machine</header>
+      <label>
+        <span>Machine URL</span>
+        <input type="text" [value]="url()" (input)="url.set(($any($event.target)).value)" placeholder="http://host:port" />
+      </label>
+      <label>
+        <span>Claim password</span>
+        <input type="password" [value]="claimPassword()" (input)="claimPassword.set(($any($event.target)).value)" />
+      </label>
+      <footer class="dialog-actions">
+        <button type="button" (click)="closeAdd()">Cancel</button>
+        <button type="button" class="primary" (click)="claim()">Claim</button>
+      </footer>
+    </div>
+  }
+</section>

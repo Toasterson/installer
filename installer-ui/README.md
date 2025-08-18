@@ -1,230 +1,73 @@
-# illumos Installer UI
+# installer-ui
 
-A modern web-based installer interface for illumos systems built with Dioxus and Rust.
+A Rust web application that provides a minimal UI and HTTP API for the installer. It serves a small web page, exposes HTTP endpoints, and acts as a client of the `machined` gRPC API. It can also validate/generate installer configs using the local `machineconfig` crate.
 
-## Overview
+## Why a Rust webapp for the UI?
 
-This installer UI provides a step-by-step guided interface for installing illumos on target machines. It allows users to:
+Comprehensive research and rationale:
 
-- **Select and claim target machines** from available machined servers
-- **Configure ZFS storage pools** with various vdev types and options
-- **Set up network interfaces** with static, DHCP, or auto-configuration
-- **Configure system settings** like hostname and DNS servers
-- **Review configuration** before installation
-- **Monitor installation progress** with real-time logs
+- Server framework: Axum (Tokio-based, modular, excellent ergonomics, widespread adoption). Alternatives considered:
+  - Actix Web: High performance, mature; Axum was preferred for simpler tower-based middleware and alignment with Tokio and tonic client patterns.
+  - Rocket: Batteries-included but heavier, and less commonly paired with tonic gRPC clients.
+- Static assets: `tower-http::ServeDir` for serving a simple HTML interface. Alternatives:
+  - SPA built with React/Vite or Svelte and reverse-proxied. Heavier toolchain, but viable for richer UIs.
+  - Full Rust/WASM UIs (Yew, Leptos, Dioxus): Compelling but adds WASM toolchain and SSR complexity. For a minimal installer UI, server-rendered/basic static page is sufficient.
+- gRPC client: `tonic` is the de facto Rust gRPC implementation and already used by `machined`. Reusing the same `.proto` ensures schema parity. Alternatives:
+  - REST translation layer (grpc-gateway). Overhead and extra code; not needed as we can call gRPC directly from the server.
+- Config generation: Reuse the local `machineconfig` library to parse/validate installer KDL and summarize output. This ensures consistent validation logic with the installer.
+- Security/auth:
+  - `machined` uses a claim workflow returning a JWT. The UI server provides an HTTP endpoint to claim, then attaches the token to gRPC metadata as `Authorization` when needed.
+  - For production, deploy behind TLS (e.g., terminated by a reverse proxy like Nginx/Traefik/Caddy) and restrict network exposure. Consider CSRF and CORS if enabling cross-origin usage.
+- Streaming/long-running ops:
+  - `Install` is a server stream in gRPC. The UI server could expose Server-Sent Events (SSE) or WebSocket to stream progress to the browser by bridging from gRPC stream. The current MVP omits this but leaves a clear path to add it.
 
-## Architecture
+## Features (MVP)
 
-The installer UI is built with:
+- Serves a static index page at `/` with basic controls, including a Pool Setup section to compose vdevs from available devices (defaults to disks). Includes a “Generate Pool KDL” action that produces a KDL snippet for the configured pool.
+- Multi-machine HTTP API:
+  - `GET /health` → `{ "status": "ok" }`
+  - `GET /api/machines` → list registered machines `[ { id, endpoint, name?, has_token } ]`
+  - `POST /api/machines` with `{ endpoint: string, name?: string }` → `{ id: string }` (adds a machine to the registry)
+  - `POST /api/machines/{id}/claim` with `{ claim_password?: string, claim_payload?: string }` → `{ claim_token: string }` (also stored server-side for subsequent calls)
+  - `GET /api/machines/{id}/system-info?token=...` → Protobuf-encoded bytes of `SystemInfoResponse` (content-type `application/octet-stream`). If `token` is omitted, the stored token is used if present.
+  - `GET /api/machines/{id}/storage?include_partitions=0|1` → JSON `{ disks: [...], partitions: [...] }` (partitions may be empty; disks are returned by default).
+  - Backward-compat: `POST /api/claim` and `GET /api/system-info` operate only when exactly one machine is registered; otherwise they return a 400 with guidance.
+  - `POST /api/generate-config` with `{ filename?: string, content: string }` → summary JSON of parsed config.
+  - `POST /api/pool/config` with `{ pool: { name: string, vdevs: [ { type: string, devices: string[] } ] } }` → `{ kdl: string, warnings: string[] }`. Note: `type: "stripe"` isn’t a native machineconfig vdev; it’s mapped with warnings (<=1 device → `mirror`, >1 → `raidz`).
 
-- **Dioxus**: Modern Rust framework for building cross-platform UIs
-- **Server Functions**: Backend integration with machined servers
-- **State Management**: Centralized installer state using Dioxus signals
-- **Responsive Design**: Works on desktop, web, and mobile platforms
-
-## Project Structure
-
-```
-installer-ui/
-├─ assets/           # CSS styles and static assets
-│  └─ main.css      # Main stylesheet with installer theme
-├─ src/
-│  ├─ main.rs       # Main application entry point
-│  ├─ components/   # UI components organized by functionality
-│  │  ├─ mod.rs     # Component module exports
-│  │  ├─ layout.rs  # MainLayout, navigation, and app structure
-│  │  └─ pages/     # Individual page components
-│  │     ├─ mod.rs  # Page component exports
-│  │     ├─ welcome.rs                # Welcome page
-│  │     ├─ server_selection.rs       # Server selection page
-│  │     ├─ storage_configuration.rs  # Storage configuration page
-│  │     ├─ network_configuration.rs  # Network configuration page
-│  │     ├─ system_configuration.rs   # System configuration page
-│  │     ├─ review_configuration.rs   # Review configuration page
-│  │     └─ installation.rs           # Installation progress page
-│  ├─ routes/       # Route definitions and navigation
-│  │  └─ mod.rs     # Route enum and navigation helpers
-│  ├─ state/        # Application state management
-│  │  └─ mod.rs     # InstallerState and data structures
-│  └─ server/       # Server communication functions
-│     └─ mod.rs     # machined server integration
-├─ Cargo.toml       # Dependencies and features
-└─ Dioxus.toml      # Dioxus configuration
-```
-
-## Modular Architecture
-
-The application has been refactored into a clean modular structure:
-
-### Components (`src/components/`)
-- **Layout components**: MainLayout, navigation, progress indicators
-- **Page components**: Individual pages for each installation step
-- **Reusable components**: Cards, forms, validation summaries
-
-### State Management (`src/state/`)
-- **InstallerState**: Central application state
-- **Data structures**: Server, storage, network configuration types
-- **Validation helpers**: Methods for validating configuration steps
-
-### Server Functions (`src/server/`)
-- **Discovery**: Load and discover available machines
-- **Communication**: Claim servers and manage installation
-- **Config conversion**: Transform UI state to machine configuration
-
-### Routing (`src/routes/`)
-- **Route definitions**: All application routes and navigation
-- **Route helpers**: Step validation, progress tracking, navigation utilities
-
-## Installation Flow
-
-The installer guides users through 7 steps:
-
-1. **Welcome** - Introduction and overview
-2. **Server Selection** - Choose and claim a target machine
-3. **Storage Configuration** - Configure ZFS pools and datasets
-4. **Network Configuration** - Set up network interfaces
-5. **System Configuration** - Configure hostname and DNS
-6. **Review Configuration** - Verify all settings
-7. **Installation** - Execute the installation process
-
-## Development
-
-### Prerequisites
-
-- Rust 1.70+ with Cargo
-- Dioxus CLI (`dx`) tool
-
-### Running the Application
-
-For desktop development:
-```bash
-dx serve --platform desktop
-```
-
-For web development:
-```bash
-dx serve --platform web
-```
-
-For mobile development:
-```bash
-dx serve --platform mobile
-```
-
-### Window Sizing Options
-
-The installer UI is optimized for different window sizes:
-
-#### Using the launcher script:
-```bash
-./launcher.sh           # Interactive menu with presets
-./run.sh --compact      # 900x650 - Good for laptops
-./run.sh --small        # 800x600 - Minimal space
-./run.sh                # 1024x768 - Standard desktop
-./run.sh --large        # 1200x900 - Large monitors
-./run.sh --fullhd       # 1920x1080 - Full HD displays
-```
-
-#### Custom window sizes:
-```bash
-./run.sh --width 1024 --height 600    # Custom dimensions
-./run.sh --platform web               # Web browser (no window size)
-```
-
-The UI automatically adapts to smaller windows with:
-- Compact layouts for windows under 800px height
-- Ultra-compact mode for windows under 500px height
-- Responsive design for mobile devices
-- Optimized content density and spacing
-
-### Building
-
-To build the application:
-```bash
-cargo build --release
-```
+Note: `SystemInfoResponse` is returned as protobuf bytes since the prost-generated types don’t implement `serde::Serialize`. A future extension can map the fields into a serializable DTO.
 
 ## Configuration
 
-The installer generates a machine configuration in KDL format that includes:
+- `UI_BIND` (default `127.0.0.1:8080`) – Address for the HTTP server.
+- Machines are added at runtime via the API/UI (e.g., `POST /api/machines`).
 
-- **Storage pools** with vdevs and ZFS options
-- **Network interfaces** with addressing configuration
-- **System settings** like hostname and DNS
-- **OCI image** specification for installation
+## Building and running
 
-Example generated configuration:
-```kdl
-pool "rpool" {
-    vdev "mirror" {
-        disks "c5t0d0" "c6t0d0"
-    }
-    options {
-        compression "zstd"
-    }
-}
-
-image "oci://aopc.cloud/openindiana/hipster:2024.12"
-
-sysconfig {
-    hostname "node01"
-    nameserver "9.9.9.9"
-    nameserver "149.112.112.112"
-    interface "net0" selector="mac:00:00:00:00" {
-        address name="v4" kind="static" "192.168.1.200/24"
-    }
-}
+```bash
+cargo build --manifest-path installer-ui/Cargo.toml
+UI_BIND=127.0.0.1:8080 cargo run --manifest-path installer-ui/Cargo.toml
 ```
 
-## Server Integration
+Visit http://127.0.0.1:8080/ to use the demo UI.
 
-The UI communicates with machined servers through server functions:
+## Future roadmap
 
-- `load_available_servers()` - Discover available machines
-- `claim_server(server_id)` - Claim a machine for installation
-- `perform_installation(config)` - Execute the installation
+- Add an endpoint to call `Install` and bridge the gRPC progress stream to the browser via SSE/WebSocket.
+- Provide JSON-friendly DTOs for system info instead of raw protobuf bytes.
+- Add templating (e.g., Askama or Tera) or integrate a richer SPA if needed.
+- Harden auth/session handling and add TLS.
+- Package the UI as a service and integrate with the overall installer deployment.
 
-## Features
 
-### Storage Configuration
-- Support for various vdev types (mirror, raidz, etc.)
-- Configurable ZFS options (compression, dedup, etc.)
-- Multiple pool support
-- Disk selection and validation
+## OpenAPI
 
-### Network Configuration
-- Multiple interface support
-- DHCP v4/v6, static, and auto-configuration
-- MAC address selectors
-- IPv4 and IPv6 addressing
+- `GET /api/openapi.json` → OpenAPI JSON specification generated from source annotations using the `utoipa` crate.
 
-### System Configuration
-- Hostname validation
-- Multiple DNS servers
-- Timezone and locale settings (planned)
+Example:
 
-### Installation Monitoring
-- Real-time progress tracking
-- Live log streaming
-- Error handling and recovery
-
-## Styling
-
-The UI uses a modern dark theme with:
-- Gradient backgrounds and glassmorphism effects
-- Responsive grid layouts
-- Smooth animations and transitions
-- Accessible color contrasts
-- Mobile-first responsive design
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-This project is licensed under the same terms as the parent illumos installer project.
+```bash
+# Run the server, then fetch the OpenAPI spec as JSON
+UI_BIND=127.0.0.1:8080 cargo run --manifest-path installer-ui/Cargo.toml
+curl -s http://127.0.0.1:8080/api/openapi.json | jq .
+```

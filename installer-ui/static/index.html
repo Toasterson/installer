@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Installer UI</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; }
+    label { display: block; margin: .5rem 0 .25rem; }
+    input, textarea, button { font: inherit; }
+    textarea { width: 100%; height: 10rem; }
+    .row { display: flex; gap: 2rem; flex-wrap: wrap; }
+    .card { border: 1px solid #ccc; padding: 1rem; border-radius: .5rem; min-width: 20rem; }
+    code { background: #f4f4f4; padding: .2rem .4rem; border-radius: .25rem; }
+    .ok { color: #0a0; }
+    .err { color: #a00; }
+    .muted { color: #666; }
+    .machine { border-top: 1px dashed #ccc; padding-top: .5rem; margin-top: .5rem; }
+  </style>
+</head>
+<body>
+<h1>Installer UI</h1>
+<p>
+  Multi-machine API: <code>/api/machines</code>, <code>/api/machines/{id}/claim</code>, <code>/api/machines/{id}/system-info</code>, plus <code>/api/generate-config</code>.
+  Back-compat single-machine: <code>/api/claim</code>, <code>/api/system-info</code> when exactly one machine is registered.
+</p>
+<p class="muted">
+  Machines are configured at runtime via this UI or the HTTP API (e.g., <code>POST /api/machines</code>).
+  The server bind address can be set with <code>UI_BIND</code> (default 127.0.0.1:8080).
+</p>
+
+<div class="row">
+  <div class="card">
+    <h2>Health</h2>
+    <button id="btn-health">Check /health</button>
+    <pre id="out-health"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Machines</h2>
+    <div>
+      <label for="m-name">Name (optional)</label>
+      <input id="m-name" placeholder="e.g. lab-node-1" />
+      <label for="m-endpoint">Endpoint</label>
+      <input id="m-endpoint" placeholder="http://127.0.0.1:50051" />
+      <button id="btn-add">Add Machine</button>
+      <div id="out-add"></div>
+    </div>
+    <h3>Registered</h3>
+    <div id="machines"></div>
+  </div>
+
+  <div class="card">
+    <h2>Generate Config</h2>
+    <label for="cfg-name">Filename (for diagnostics)</label>
+    <input id="cfg-name" placeholder="stdin.kdl" />
+    <label for="cfg-content">Content</label>
+    <textarea id="cfg-content" placeholder="kdl config here"></textarea>
+    <button id="btn-gen">POST /api/generate-config</button>
+    <pre id="out-gen"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Pool Setup</h2>
+    <div>
+      <label for="pool-machine">Machine</label>
+      <select id="pool-machine"></select>
+      <label for="pool-name">Pool name</label>
+      <input id="pool-name" value="pool0" />
+      <label>
+        <input type="checkbox" id="toggle-partitions" /> Include partitions (default off)
+      </label>
+      <div class="muted">Available devices: <span id="dev-count">0</span></div>
+      <div style="margin:.5rem 0;">
+        <button id="btn-add-vdev">Add VDEV</button>
+        <button id="btn-reset-vdevs">Reset</button>
+      </div>
+      <div id="vdevs"></div>
+      <h3>Preview</h3>
+      <pre id="pool-preview"></pre>
+      <div style="margin:.5rem 0;">
+        <button id="btn-gen-pool-kdl">Generate Pool KDL</button>
+      </div>
+      <h3>KDL</h3>
+      <pre id="out-pool-kdl"></pre>
+      <div id="out-pool-warn" class="muted"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Pool Setup UI */
+(function(){
+  const poolMachineSel = document.getElementById('pool-machine');
+  const poolNameInput = document.getElementById('pool-name');
+  const togglePartitions = document.getElementById('toggle-partitions');
+  const devCountSpan = document.getElementById('dev-count');
+  const vdevsDiv = document.getElementById('vdevs');
+  const previewPre = document.getElementById('pool-preview');
+  const btnAddVdev = document.getElementById('btn-add-vdev');
+  const btnResetVdevs = document.getElementById('btn-reset-vdevs');
+  const btnGenPoolKdl = document.getElementById('btn-gen-pool-kdl');
+  const outPoolKdl = document.getElementById('out-pool-kdl');
+  const outPoolWarn = document.getElementById('out-pool-warn');
+
+  let storage = { disks: [], partitions: [] };
+  let vdevs = [];
+
+  function humanBytes(n){
+    if (!n) return '0 B';
+    const units=['B','KB','MB','GB','TB','PB'];
+    let i=0; let x = Number(n);
+    while(x>=1024 && i<units.length-1){ x/=1024; i++; }
+    return x.toFixed(1)+' '+units[i];
+  }
+
+  function deviceOptions(){
+    const includeParts = togglePartitions.checked;
+    const disks = storage.disks.map(d=>({ id: d.device, label: `${d.device} (${humanBytes(d.size_bytes)}) ${d.product||''}`.trim() }));
+    const parts = includeParts ? storage.partitions.map(p=>({ id: p.device, label: `${p.device} (${humanBytes(p.size_bytes)})` })) : [];
+    return disks.concat(parts);
+  }
+
+  async function loadMachinesIntoPoolSelector(){
+    const r = await fetch('/api/machines');
+    const list = await r.json();
+    poolMachineSel.innerHTML = '';
+    list.forEach(m=>{
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.name || m.id;
+      poolMachineSel.appendChild(opt);
+    });
+    if (list.length>0){
+      poolMachineSel.value = list[0].id;
+    }
+  }
+
+  async function loadStorage(){
+    const id = poolMachineSel.value; if(!id){ storage={disks:[],partitions:[]}; renderVdevs(); updatePreview(); return; }
+    const qp = togglePartitions.checked ? '?include_partitions=1' : '';
+    const r = await fetch(`/api/machines/${encodeURIComponent(id)}/storage${qp}`);
+    if (!r.ok){ storage={disks:[],partitions:[]}; devCountSpan.textContent = '0'; renderVdevs(); updatePreview(); return; }
+    storage = await r.json();
+    const count = storage.disks.length + (togglePartitions.checked ? storage.partitions.length : 0);
+    devCountSpan.textContent = String(count);
+    renderVdevs();
+    updatePreview();
+  }
+
+  function renderVdevs(){
+    const opts = deviceOptions();
+    vdevsDiv.innerHTML = '';
+    vdevs.forEach((v, idx)=>{
+      const row = document.createElement('div');
+      row.style.borderTop = '1px dashed #ccc'; row.style.paddingTop = '.5rem'; row.style.marginTop = '.5rem';
+      row.innerHTML = `
+        <div>
+          <label>VDEV ${idx+1} type</label>
+          <select data-idx="${idx}" class="vdev-type">
+            <option value="stripe" ${v.type==='stripe'?'selected':''}>stripe</option>
+            <option value="mirror" ${v.type==='mirror'?'selected':''}>mirror</option>
+            <option value="raidz1" ${v.type==='raidz1'?'selected':''}>raidz1</option>
+            <option value="raidz2" ${v.type==='raidz2'?'selected':''}>raidz2</option>
+            <option value="raidz3" ${v.type==='raidz3'?'selected':''}>raidz3</option>
+          </select>
+        </div>
+        <div>
+          <label>Devices</label>
+          <select multiple size="6" data-idx="${idx}" class="vdev-devs" style="min-width:20rem;"></select>
+          <button class="remove-vdev" data-idx="${idx}">Remove VDEV</button>
+        </div>`;
+      const devSel = row.querySelector('select.vdev-devs');
+      opts.forEach(o=>{
+        const opt=document.createElement('option');
+        opt.value=o.id; opt.textContent=o.label; if((v.devices||[]).includes(o.id)) opt.selected=true; devSel.appendChild(opt);
+      });
+      vdevsDiv.appendChild(row);
+
+      row.querySelector('select.vdev-type').onchange = (e)=>{
+        const i = Number(e.target.getAttribute('data-idx'));
+        vdevs[i].type = e.target.value;
+        updatePreview();
+      };
+      devSel.onchange = (e)=>{
+        const i = Number(e.target.getAttribute('data-idx'));
+        const selected = Array.from(e.target.selectedOptions).map(o=>o.value);
+        vdevs[i].devices = selected;
+        updatePreview();
+      };
+      row.querySelector('button.remove-vdev').onclick = (e)=>{
+        const i = Number(e.target.getAttribute('data-idx'));
+        vdevs.splice(i,1);
+        renderVdevs();
+        updatePreview();
+      };
+    });
+  }
+
+  function updatePreview(){
+    const layout = {
+      pool: {
+        name: poolNameInput.value || 'pool0',
+        vdevs: vdevs.map(v=>({ type: v.type, devices: v.devices||[] }))
+      }
+    };
+    previewPre.textContent = JSON.stringify(layout, null, 2);
+  }
+
+  btnAddVdev.onclick = ()=>{ vdevs.push({ type: 'mirror', devices: [] }); renderVdevs(); updatePreview(); };
+  btnResetVdevs.onclick = ()=>{ vdevs = []; renderVdevs(); updatePreview(); };
+  poolNameInput.oninput = updatePreview;
+  togglePartitions.onchange = loadStorage;
+  poolMachineSel.onchange = loadStorage;
+  btnGenPoolKdl.onclick = async ()=>{
+    const layout = {
+      pool: {
+        name: poolNameInput.value || 'pool0',
+        vdevs: vdevs.map(v=>({ type: v.type, devices: v.devices||[] }))
+      }
+    };
+    outPoolWarn.textContent = '';
+    outPoolKdl.textContent = '';
+    const r = await fetch('/api/pool/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(layout) });
+    const j = await r.json();
+    if (r.ok) {
+      outPoolKdl.textContent = j.kdl;
+      if (j.warnings && j.warnings.length) {
+        outPoolWarn.textContent = 'Warnings: ' + j.warnings.join('; ');
+      }
+    } else {
+      outPoolWarn.textContent = 'Error: ' + (j.error || 'request failed');
+    }
+  };
+
+  // initialize
+  (async function init(){
+    await loadMachinesIntoPoolSelector();
+    await loadStorage();
+  })();
+})();
+const $ = sel => document.querySelector(sel);
+const machinesDiv = $('#machines');
+
+async function refreshMachines() {
+  const r = await fetch('/api/machines');
+  const list = await r.json();
+  machinesDiv.innerHTML = '';
+  list.forEach(m => {
+    const wrap = document.createElement('div');
+    wrap.className = 'machine';
+    wrap.innerHTML = `
+      <div><strong>${m.name || m.id}</strong> <span class="muted">(${m.id})</span></div>
+      <div>Endpoint: <code>${m.endpoint}</code></div>
+      <div>Claimed: ${m.has_token ? '<span class="ok">yes</span>' : '<span class="err">no</span>'}</div>
+      <div>
+        <input type="password" placeholder="claim password" id="pw-${m.id}">
+        <button id="claim-${m.id}">Claim</button>
+        <button id="sysinfo-${m.id}">Get System Info</button>
+        <span id="sysinfo-len-${m.id}" class="muted"></span>
+        <span id="status-${m.id}"></span>
+      </div>
+    `;
+    machinesDiv.appendChild(wrap);
+    wrap.querySelector(`#claim-${m.id}`).onclick = async () => {
+      const claim_password = wrap.querySelector(`#pw-${m.id}`).value;
+      const r = await fetch(`/api/machines/${encodeURIComponent(m.id)}/claim`, {method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({claim_password})});
+      const j = await r.json();
+      if (r.ok) {
+        wrap.querySelector(`#status-${m.id}`).innerHTML = '<span class="ok">claimed</span>';
+        refreshMachines();
+      } else {
+        wrap.querySelector(`#status-${m.id}`).innerHTML = '<span class="err">' + (j.error || 'error') + '</span>';
+      }
+    };
+    wrap.querySelector(`#sysinfo-${m.id}`).onclick = async () => {
+      const r = await fetch(`/api/machines/${encodeURIComponent(m.id)}/system-info`);
+      const b = await r.arrayBuffer();
+      wrap.querySelector(`#sysinfo-len-${m.id}`).textContent = `bytes: ${b.byteLength}`;
+    };
+  });
+}
+
+$('#btn-add').onclick = async () => {
+  const name = $('#m-name').value || null;
+  const endpoint = $('#m-endpoint').value;
+  const r = await fetch('/api/machines', {method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({name, endpoint})});
+  const j = await r.json();
+  if (r.ok) {
+    $('#out-add').innerHTML = '<span class="ok">added ' + j.id + '</span>';
+    $('#m-name').value = '';
+    $('#m-endpoint').value = '';
+    await refreshMachines();
+  } else {
+    $('#out-add').innerHTML = '<span class="err">' + (j.error || 'error') + '</span>';
+  }
+};
+
+$('#btn-health').onclick = async () => {
+  const r = await fetch('/health');
+  $('#out-health').textContent = JSON.stringify(await r.json(), null, 2);
+};
+
+$('#btn-gen').onclick = async () => {
+  const content = $('#cfg-content').value;
+  const filename = $('#cfg-name').value || null;
+  const r = await fetch('/api/generate-config', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({filename, content})});
+  const j = await r.json();
+  $('#out-gen').textContent = JSON.stringify(j, null, 2);
+};
+
+refreshMachines();
+</script>
+</body>
+</html>

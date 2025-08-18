@@ -13,6 +13,7 @@
       <sourceFolder url="file://$MODULE_DIR$/machined/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/ociclient/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sysconfig/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/installer-ui/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/imgdepot/target" />
       <excludeFolder url="file://$MODULE_DIR$/installadm/target" />
       <excludeFolder url="file://$MODULE_DIR$/instcomd/target" />
@@ -20,6 +21,7 @@
       <excludeFolder url="file://$MODULE_DIR$/machined/target" />
       <excludeFolder url="file://$MODULE_DIR$/ociclient/target" />
       <excludeFolder url="file://$MODULE_DIR$/sysconfig/target" />
+      <excludeFolder url="file://$MODULE_DIR$/installer-ui/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

@@ -52,6 +52,13 @@ message DiskInfo {
   string chassis_bay = 11;  // Physical location (LOCATION column in diskinfo -P output)
 }
 
+// Partition information structure
+message PartitionInfo {
+  string device = 1;        // Partition device name (e.g., c0t0d0s0 or c0t0d0p1)
+  uint64 size_bytes = 2;    // Size in bytes (0 if unknown)
+  string parent_device = 3; // Parent disk device (e.g., c0t0d0)
+}
+
 // Network interface information structure
 message NetworkInterface {
   string name = 1;          // Interface name (e.g., net0)
@@ -216,6 +223,7 @@ message SystemInfoResponse {
   repeated DiskInfo disks = 1;                // List of disks
   repeated NetworkInterface network_interfaces = 2; // List of network interfaces
   SmbiosInfo smbios = 3;                     // SMBIOS information
+  repeated PartitionInfo partitions = 4;      // List of partitions/slices
 }
 
 service MachineService {

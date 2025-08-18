@@ -1,8 +1,9 @@
 use crate::machined::{
     BiosInfo, BaseboardInfo, ChassisInfo, DiskInfo, MemoryArrayInfo, MemoryArrayMappedAddressInfo,
     MemoryDeviceInfo, NetworkInterface, ProcessorInfo, SmbiosInfo, SystemBootInfo, SystemInfo as SmbiosSystemInfo,
-    SystemInfoResponse,
+    SystemInfoResponse, PartitionInfo,
 };
+use std::fs;
 use std::process::Command;
 use std::str::FromStr;
 use tonic::Status;
@@ -1182,10 +1183,42 @@ pub fn get_system_info() -> Result<SystemInfoResponse, Status> {
     let disks = get_disk_info()?;
     let network_interfaces = get_network_info()?;
     let smbios = get_smbios_info()?;
+    let partitions = get_partitions_info(&disks).unwrap_or_else(|_| Vec::new());
 
     Ok(SystemInfoResponse {
         disks,
         network_interfaces,
         smbios: Some(smbios),
+        partitions,
     })
+}
+
+/// Enumerate partitions/slices under /dev/dsk for each disk
+fn get_partitions_info(disks: &Vec<DiskInfo>) -> Result<Vec<PartitionInfo>, Status> {
+    let mut parts: Vec<PartitionInfo> = Vec::new();
+    let entries = fs::read_dir("/dev/dsk").map_err(|e| Status::internal(format!("failed to read /dev/dsk: {}", e)))?;
+    let mut names: Vec<String> = Vec::new();
+    for ent in entries {
+        if let Ok(de) = ent {
+            if let Ok(name_os) = de.file_name().into_string() {
+                names.push(name_os);
+            }
+        }
+    }
+    for d in disks.iter() {
+        let prefix_s = format!("{}s", d.device);
+        let prefix_p = format!("{}p", d.device);
+        for n in names.iter() {
+            let is_slice = n.starts_with(&prefix_s) && n[prefix_s.len()..].chars().all(|c| c.is_ascii_digit());
+            let is_part = n.starts_with(&prefix_p) && n[prefix_p.len()..].chars().all(|c| c.is_ascii_digit());
+            if is_slice || is_part {
+                parts.push(PartitionInfo {
+                    device: n.clone(),
+                    size_bytes: 0,
+                    parent_device: d.device.clone(),
+                });
+            }
+        }
+    }
+    Ok(parts)
 }
