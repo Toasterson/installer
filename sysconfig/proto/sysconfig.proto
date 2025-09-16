@@ -305,6 +305,9 @@ message StateChange {
   
   // The new value (for creates and updates)
   string new_value = 4;
+
+  // Whether this change contains verbose data (e.g., large content) that clients may omit
+  bool verbose = 5;
 }
 
 // Types of state changes

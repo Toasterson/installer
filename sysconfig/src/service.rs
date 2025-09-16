@@ -508,6 +508,7 @@ impl proto::sys_config_service_server::SysConfigService for SysConfigService {
                         path: c.path,
                         old_value: c.old_value,
                         new_value: c.new_value,
+                        verbose: c.verbose,
                     })
                     .collect();
 

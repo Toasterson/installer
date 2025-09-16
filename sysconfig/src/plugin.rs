@@ -83,6 +83,7 @@ impl PluginClient {
                 path: c.path,
                 old_value: c.old_value,
                 new_value: c.new_value,
+                verbose: c.verbose,
             })
             .collect();
 
@@ -108,6 +109,7 @@ impl PluginClient {
                     path: c.path,
                     old_value: c.old_value,
                     new_value: c.new_value,
+                    verbose: c.verbose,
                 })
                 .collect();
 

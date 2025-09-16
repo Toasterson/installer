@@ -1,0 +1,45 @@
+[package]
+name = "sysconfig-plugins"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+# Gate the Windows base plugin; not built by default
+windows-plugin = []
+
+[dependencies]
+sysconfig = { path = "../sysconfig" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tonic = "0.12"
+prost = "0.13"
+tokio-stream = { version = "0.1", features = ["net"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1.7.0", features = ["v4"] }
+libc = "0.2"
+futures = "0.3"
+tower = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[[bin]]
+name = "linux-base-plugin"
+path = "src/bin/linux-base-plugin.rs"
+
+[[bin]]
+name = "illumos-base-plugin"
+path = "src/bin/illumos-base-plugin.rs"
+
+[[bin]]
+name = "freebsd-base-plugin"
+path = "src/bin/freebsd-base-plugin.rs"
+
+[[bin]]
+name = "windows-base-plugin"
+path = "src/bin/windows-base-plugin.rs"
+required-features = ["windows-plugin"]

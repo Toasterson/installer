@@ -14,6 +14,7 @@
       <sourceFolder url="file://$MODULE_DIR$/ociclient/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sysconfig/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/installer-ui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sysconfig-plugins/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/imgdepot/target" />
       <excludeFolder url="file://$MODULE_DIR$/installadm/target" />
       <excludeFolder url="file://$MODULE_DIR$/instcomd/target" />
@@ -22,6 +23,15 @@
       <excludeFolder url="file://$MODULE_DIR$/ociclient/target" />
       <excludeFolder url="file://$MODULE_DIR$/sysconfig/target" />
       <excludeFolder url="file://$MODULE_DIR$/installer-ui/target" />
+      <excludeFolder url="file://$MODULE_DIR$/.vagrant" />
+      <excludeFolder url="file://$MODULE_DIR$/image-builder/target" />
+      <excludeFolder url="file://$MODULE_DIR$/installadm/boot_files" />
+      <excludeFolder url="file://$MODULE_DIR$/installer-docs/book" />
+      <excludeFolder url="file://$MODULE_DIR$/installer-ui/frontend-ng/.idea" />
+      <excludeFolder url="file://$MODULE_DIR$/instcomd/.idea/dataSources" />
+      <excludeFolder url="file://$MODULE_DIR$/machined/.idea/httpRequests" />
+      <excludeFolder url="file://$MODULE_DIR$/machined/.vagrant" />
+      <excludeFolder url="file://$MODULE_DIR$/sysconfig-plugins/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
