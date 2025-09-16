@@ -91,7 +91,8 @@ impl SysConfigService {
 
                     // Spawn a task to handle the connection
                     tokio::spawn(async move {
-                        let svc = proto::sys_config_service_server::SysConfigServiceServer::new(service);
+                        let svc =
+                            proto::sys_config_service_server::SysConfigServiceServer::new(service);
 
                         match tonic::transport::Server::builder()
                             .add_service(svc)
@@ -368,17 +369,32 @@ impl SysConfigService {
 
         let mut latest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
         for ent in entries {
-            let ent = match ent { Ok(e) => e, Err(_) => continue };
+            let ent = match ent {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
             let path = ent.path();
-            if !path.is_file() { continue; }
+            if !path.is_file() {
+                continue;
+            }
             if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                if ext != "json" { continue; }
+                if ext != "json" {
+                    continue;
+                }
             } else {
                 continue;
             }
-            let md = match ent.metadata() { Ok(m) => m, Err(_) => continue };
-            if !md.is_file() { continue; }
-            let modified = match md.modified() { Ok(m) => m, Err(_) => continue };
+            let md = match ent.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            if !md.is_file() {
+                continue;
+            }
+            let modified = match md.modified() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
             match &latest {
                 Some((cur, _)) if modified <= *cur => {}
                 _ => latest = Some((modified, path)),

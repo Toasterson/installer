@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use clap::Parser;
-use sysconfig::{SysConfigService, Result};
+use std::sync::Arc;
+use sysconfig::{Result, SysConfigService};
 use tracing_subscriber::EnvFilter;
 
 /// Command line arguments for the sysconfig service
