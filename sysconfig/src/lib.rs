@@ -338,15 +338,21 @@ pub struct SysConfigService {
 
 impl SysConfigService {
     /// Create a new sysconfig service
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self> {
         let (state_change_tx, _) = broadcast::channel(100);
+        // Load latest persisted state revision if available. If a state file exists but
+        // cannot be read or parsed, bail out instead of using an empty state.
+        let initial_state = match Self::load_latest_state_revision()? {
+            Some(state) => state,
+            None => SystemState::new(),
+        };
 
-        Self {
-            state: Arc::new(Mutex::new(SystemState::new())),
+        Ok(Self {
+            state: Arc::new(Mutex::new(initial_state)),
             plugins: Arc::new(Mutex::new(HashMap::new())),
             locks: Arc::new(Mutex::new(Vec::new())),
             state_change_tx,
-        }
+        })
     }
 
     /// Start the service
@@ -515,21 +521,28 @@ impl SysConfigService {
 
         // Apply the state changes
         if !dry_run {
-            let mut state = self.state.lock().unwrap();
+            // Replace the entire state and persist a timestamped revision to disk
+            let serialized = {
+                let mut state = self.state.lock().unwrap();
 
-            // For simplicity, we'll just replace the entire state
-            // In a real implementation, you would want to merge the states
-            *state = new_state;
+                // Overwrite existing state with new_state (apply is an overwrite, not a merge)
+                *state = new_state;
 
-            // Broadcast the state change
-            let event = StateChangeEvent {
-                path: "".to_string(),
-                value: state.to_json()?,
-                plugin_id: plugin_id.to_string(),
-                timestamp: chrono::Utc::now().timestamp(),
+                // Broadcast the state change
+                let event = StateChangeEvent {
+                    path: "".to_string(),
+                    value: state.to_json()?,
+                    plugin_id: plugin_id.to_string(),
+                    timestamp: chrono::Utc::now().timestamp(),
+                };
+                let _ = self.state_change_tx.send(event);
+
+                // Serialize to JSON for persistent snapshot
+                state.to_json()?
             };
 
-            let _ = self.state_change_tx.send(event);
+            // Persist the new state snapshot with a timestamped filename
+            self.persist_state_revision(&serialized)?;
         }
 
         Ok(changes)
@@ -1010,4 +1023,104 @@ pub trait PluginTrait: Send + Sync {
 
     /// Notify the plugin of a state change
     async fn notify_state_change(&self, event: StateChangeEvent) -> Result<()>;
+}
+
+
+impl SysConfigService {
+    fn state_revision_dir() -> std::path::PathBuf {
+        // Determine where to store persistent state revisions
+        let euid = unsafe { libc::geteuid() as u32 };
+        if euid == 0 {
+            // Root: store under /var
+            std::path::PathBuf::from("/var/lib/sysconfig")
+        } else {
+            // Non-root: prefer XDG_STATE_HOME, then XDG_DATA_HOME, then ~/.local/state
+            if let Ok(dir) = std::env::var("XDG_STATE_HOME") {
+                return std::path::PathBuf::from(dir).join("sysconfig");
+            }
+            if let Ok(dir) = std::env::var("XDG_DATA_HOME") {
+                return std::path::PathBuf::from(dir).join("sysconfig");
+            }
+            if let Ok(home) = std::env::var("HOME") {
+                return std::path::PathBuf::from(home).join(".local/state/sysconfig");
+            }
+            // Last resort
+            std::path::PathBuf::from("/tmp/sysconfig-state")
+        }
+    }
+
+    fn persist_state_revision(&self, json: &str) -> Result<()> {
+        let dir = Self::state_revision_dir();
+        std::fs::create_dir_all(&dir)?;
+
+        // Use a UTC timestamp for the filename, ensure uniqueness with millis
+        let now = chrono::Utc::now();
+        let base = now.format("%Y%m%dT%H%M%S").to_string();
+        let mut path = dir.join(format!("{}.json", base));
+        if path.exists() {
+            // Very unlikely, but add milliseconds to avoid collision
+            let millis = now.timestamp_millis() % 1000;
+            path = dir.join(format!("{}.{:03}Z.json", base, millis));
+        }
+
+        // Write file atomically where possible: write to temp then rename
+        let tmp_path = dir.join(format!("{}.json.tmp", base));
+        {
+            let mut f = std::fs::File::create(&tmp_path)?;
+            use std::io::Write as _;
+            f.write_all(json.as_bytes())?;
+            f.sync_all()?;
+        }
+        std::fs::rename(&tmp_path, &path)?;
+
+        Ok(())
+    }
+
+    fn load_latest_state_revision() -> Result<Option<SystemState>> {
+        let dir = Self::state_revision_dir();
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => return Ok(None), // No directory or unreadable; treat as no prior state
+        };
+
+        let mut latest: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+        for ent in entries {
+            let ent = match ent { Ok(e) => e, Err(_) => continue };
+            let path = ent.path();
+            if !path.is_file() { continue; }
+            if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
+                if ext != "json" { continue; }
+            } else {
+                continue;
+            }
+            let md = match ent.metadata() { Ok(m) => m, Err(_) => continue };
+            if !md.is_file() { continue; }
+            let modified = match md.modified() { Ok(m) => m, Err(_) => continue };
+            match &latest {
+                Some((cur, _)) if modified <= *cur => {}
+                _ => latest = Some((modified, path)),
+            }
+        }
+
+        if let Some((_, path)) = latest {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => match SystemState::from_json(&content) {
+                    Ok(state) => {
+                        tracing::info!("Loaded initial state from {:?}", path);
+                        Ok(Some(state))
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to parse state file {:?}: {}", path, e);
+                        Err(e)
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Failed to read state file {:?}: {}", path, e);
+                    Err(e.into())
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
 }

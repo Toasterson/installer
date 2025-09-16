@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
     let socket = args.socket.unwrap_or_else(default_socket_path);
 
     // Create the sysconfig service
-    let service = SysConfigService::new();
+    let service = SysConfigService::new()?;
     let service = Arc::new(service);
 
     // Start the service
