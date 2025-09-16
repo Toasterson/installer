@@ -9,8 +9,8 @@ thiserror = "2"
 miette = "7.4"
 strum = { version = "0.27", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
-tonic = "0.11.0"
-prost = "0.12.3"
+tonic = "0.12"
+prost = "0.13"
 futures = "0.3.30"
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.114"
@@ -19,10 +19,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
 tokio-stream = { version = "0.1.14", features = ["net", "sync"] }
-tower = "0.4"
+tower = "0.5"
 chrono = "0.4"
 async-trait = "*"
-tokio-util = { version = "0.7.15", features = ["compat"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+libc = "0.2"
 
 [dev-dependencies]
 miette = { version = "7.4.0", features = ["fancy"] }
@@ -30,4 +31,4 @@ tokio-test = "0.4.3"
 assert_matches = "1.5.0"
 
 [build-dependencies]
-tonic-build = "0.11.0"
+tonic-build = "0.12"

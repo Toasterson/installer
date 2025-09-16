@@ -14,69 +14,13 @@ use tokio_stream::Stream;
 use uuid::Uuid;
 
 // Include the generated proto code
-pub mod proto {
-    tonic::include_proto!("sysconfig");
-}
+pub mod proto;
 
 // Re-export the proto types for convenience
 pub use proto::*;
 
 // Separate module for knus parsing to avoid conflicts with our custom Result type
-pub mod config {
-    use knus;
-    use std::fmt::Debug;
-
-    // Define types for knus parsing
-    #[derive(Debug, Default, knus::Decode)]
-    pub struct SysConfig {
-        #[knus(child, unwrap(argument))]
-        pub hostname: String,
-
-        #[knus(children(name = "nameserver"), unwrap(argument))]
-        pub nameservers: Vec<String>,
-
-        #[knus(children(name = "interface"))]
-        pub interfaces: Vec<Interface>,
-    }
-
-    #[derive(Debug, Default, knus::Decode)]
-    pub struct Interface {
-        #[knus(argument)]
-        pub name: Option<String>,
-
-        #[knus(property)]
-        pub selector: Option<String>,
-
-        #[knus(children(name = "address"))]
-        pub addresses: Vec<AddressObject>,
-    }
-
-    #[derive(Debug, Default, knus::Decode)]
-    pub struct AddressObject {
-        #[knus(property)]
-        pub name: String,
-
-        #[knus(property)]
-        pub kind: AddressKind,
-
-        #[knus(argument)]
-        pub address: Option<String>,
-    }
-
-    #[derive(knus::DecodeScalar, Debug, Default, strum::Display)]
-    pub enum AddressKind {
-        #[default]
-        Dhcp4,
-        Dhcp6,
-        Addrconf,
-        Static,
-    }
-
-    // Parse config using knus
-    pub fn parse_config(path: &str, content: &str) -> Result<SysConfig, knus::Error> {
-        knus::parse(path, content)
-    }
-}
+pub mod config;
 
 // Re-export the config types for convenience
 pub use config::SysConfig;
@@ -129,11 +73,6 @@ impl From<tokio::sync::broadcast::error::RecvError> for Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
-// Original config parsing functionality
-pub fn parse_config(path: &str, content: &str) -> Result<SysConfig> {
-    Ok(config::parse_config(path, &content)?)
-}
 
 // New types for the sysconfig service
 
@@ -847,7 +786,7 @@ impl sys_config_service_server::SysConfigService for SysConfigService {
 /// Plugin client for communicating with a plugin
 #[derive(Clone)]
 pub struct PluginClient {
-    client: proto::plugin_service_client::PluginServiceClient<tonic::transport::Channel>,
+    client: plugin_service_client::PluginServiceClient<tonic::transport::Channel>,
 }
 
 impl PluginClient {
@@ -858,9 +797,8 @@ impl PluginClient {
             .connect_with_connector(tower::service_fn(move |_| {
                 let socket_path = socket_path.clone();
                 async move {
-                    use tokio_util::compat::{FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
                     let stream = tokio::net::UnixStream::connect(socket_path).await?;
-                    Ok::<_, std::io::Error>(stream.compat_write().compat())
+                    Ok::<_, std::io::Error>(hyper_util::rt::TokioIo::new(stream))
                 }
             }))
             .await?;
@@ -872,10 +810,10 @@ impl PluginClient {
 
     /// Initialize the plugin
     pub async fn initialize(&mut self, plugin_id: &str, service_socket_path: &str) -> Result<()> {
-        let request = InitializeRequest {
+        let request = tonic::Request::new(InitializeRequest {
             plugin_id: plugin_id.to_string(),
             service_socket_path: service_socket_path.to_string(),
-        };
+        });
 
         let response = self.client.initialize(request).await?;
         let response = response.into_inner();

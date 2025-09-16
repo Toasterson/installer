@@ -1,6 +1,7 @@
-use std::io::Result;
-
-fn main() -> Result<()> {
-    tonic_build::compile_protos("proto/sysconfig.proto")?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tonic_build::configure()
+        .build_server(true)
+        .build_client(true)
+        .compile_protos(&["proto/sysconfig.proto"], &["proto"])?;
     Ok(())
 }
