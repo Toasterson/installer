@@ -1,0 +1,113 @@
+// Full System KDL Configuration
+// This example demonstrates a complete system configuration including
+// storage pools, boot images, and network configuration
+
+// Storage pool configuration
+pool "rpool" {
+    vdev "mirror" {
+        disks "c5t0d0" "c6t0d0"
+    }
+    options {
+        compression "zstd"
+        atime "off"
+        recordsize "128k"
+    }
+}
+
+// Additional pool for data storage
+pool "datapool" {
+    vdev "raidz2" {
+        disks "c7t0d0" "c8t0d0" "c9t0d0" "c10t0d0" "c11t0d0" "c12t0d0"
+    }
+    options {
+        compression "lz4"
+        dedup "off"
+        atime "off"
+    }
+}
+
+// Boot image specification
+image "oci://aopc.cloud/openindiana/hipster:2024.12"
+
+// Alternative image examples (commented out)
+// image "http://example.com/images/custom-os.img"
+// image "file:///mnt/images/base-system.tar.gz"
+
+// System configuration
+sysconfig {
+    // Set the system hostname
+    hostname "production-server-01"
+
+    // Configure multiple DNS nameservers for redundancy
+    nameserver "9.9.9.9"
+    nameserver "149.112.112.112"
+    nameserver "1.1.1.1"
+    nameserver "1.0.0.1"
+    nameserver "2606:4700:4700::1111"
+    nameserver "2606:4700:4700::1001"
+
+    // Primary network interface - selected by MAC address
+    interface "net0" selector="mac:00:0c:29:3e:4f:50" {
+        address name="v4-primary" kind="static" "192.168.1.200/24"
+        address name="v4-vip" kind="static" "192.168.1.201/24"
+        address name="v6-primary" kind="static" "2001:db8:1::200/64"
+        address name="v6-link" kind="addrconf"
+    }
+
+    // Secondary network interface - management network
+    interface "net1" selector="mac:00:0c:29:3e:4f:51" {
+        address name="mgmt-v4" kind="static" "10.0.0.200/24"
+        address name="mgmt-v6" kind="dhcp6"
+    }
+
+    // Backup network interface
+    interface "net2" selector="mac:00:0c:29:3e:4f:52" {
+        address name="backup-v4" kind="static" "172.16.0.200/24"
+        address name="backup-v6" kind="static" "fd00:172:16::200/64"
+    }
+
+    // Storage network interface - jumbo frames
+    interface "net3" selector="mac:00:0c:29:3e:4f:53" {
+        address name="storage-v4" kind="static" "10.10.10.200/24"
+        address name="storage-v6" kind="static" "fd00:10:10:10::200/64"
+    }
+
+    // DHCP interface for dynamic configuration
+    interface "net4" selector="mac:00:0c:29:3e:4f:54" {
+        address name="dhcp-v4" kind="dhcp4"
+        address name="dhcp-v6" kind="dhcp6"
+        address name="slaac" kind="addrconf"
+    }
+
+    // Wireless interface (if present)
+    interface "wlan0" {
+        address name="wifi-v4" kind="dhcp4"
+        address name="wifi-v6" kind="addrconf"
+    }
+}
+
+// Additional system settings (future expansion)
+system {
+    timezone "America/Los_Angeles"
+    locale "en_US.UTF-8"
+    keyboard "us"
+}
+
+// User configuration (future expansion)
+users {
+    user "admin" {
+        uid 1000
+        gid 1000
+        groups "wheel" "staff"
+        shell "/bin/bash"
+        home "/home/admin"
+    }
+}
+
+// Service configuration (future expansion)
+services {
+    enable "ssh"
+    enable "ntp"
+    disable "telnet"
+    disable "ftp"
+}

@@ -1,0 +1,71 @@
+[package]
+name = "sysconfig-provisioning"
+version = "0.1.0"
+edition = "2021"
+authors = ["illumos installer team"]
+description = "Multi-source provisioning plugin for sysconfig"
+
+[dependencies]
+# Core dependencies
+sysconfig = { path = "../sysconfig" }
+tokio = { version = "1", features = ["full"] }
+tonic = "0.12"
+prost = "0.13"
+tokio-stream = { version = "0.1", features = ["net"] }
+
+# Configuration parsing
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
+knus = "0.1"
+
+# HTTP client for metadata services
+reqwest = { version = "0.11", features = ["blocking", "json", "rustls-tls"] }
+
+# CLI and logging
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Platform-specific
+libc = "0.2"
+nix = { version = "0.27", features = ["fs", "mount"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+async-trait = "0.1"
+futures = "0.3"
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+base64 = "0.21"
+ipnetwork = "0.20"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = "0.16"
+
+[target.'cfg(target_os = "illumos")'.dependencies]
+# illumos-specific dependencies would go here
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[[bin]]
+name = "provisioning-plugin"
+path = "src/main.rs"
+
+[features]
+default = ["all-clouds"]
+all-clouds = ["ec2", "azure", "gcp", "digitalocean", "openstack", "oracle", "smartos"]
+ec2 = []
+azure = []
+gcp = []
+digitalocean = []
+openstack = []
+oracle = []
+smartos = []
+vmware = []

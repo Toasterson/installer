@@ -1,0 +1,40 @@
+// Example KDL configuration file for sysconfig
+// This file demonstrates various configuration options
+
+sysconfig {
+    // Set the system hostname
+    hostname "example-host"
+
+    // Configure DNS nameservers
+    nameserver "8.8.8.8"
+    nameserver "8.8.4.4"
+    nameserver "1.1.1.1"
+
+    // Configure network interfaces
+
+    // Interface with DHCP for both IPv4 and IPv6
+    interface "eth0" {
+        address name="v4" kind="dhcp4"
+        address name="v6" kind="dhcp6"
+    }
+
+    // Interface with static IP addresses
+    interface "eth1" selector="mac:00:11:22:33:44:55" {
+        address name="v4" kind="static" "192.168.1.100/24"
+        address name="v6" kind="static" "fe80::1/64"
+    }
+
+    // Interface with mixed configuration
+    interface "wlan0" {
+        address name="v4" kind="dhcp4"
+        address name="v6" kind="addrconf"
+    }
+
+    // Interface selected by MAC address with multiple addresses
+    interface "net0" selector="mac:aa:bb:cc:dd:ee:ff" {
+        address name="primary-v4" kind="static" "10.0.0.10/24"
+        address name="secondary-v4" kind="static" "10.0.0.11/24"
+        address name="v6" kind="dhcp6"
+        address name="link-local" kind="addrconf"
+    }
+}

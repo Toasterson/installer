@@ -2,6 +2,10 @@
 
 SysConfig is a service for configuring illumos systems. It provides a plugin-based architecture that allows different components to manage different aspects of system configuration.
 
+## KDL Configuration Support
+
+SysConfig now supports KDL (KDL Document Language) configuration files, providing a modern and expressive way to define system configurations. KDL files can be loaded at startup or watched for changes, making system configuration more dynamic and maintainable.
+
 ## Features
 
 - Plugin-based architecture for extensibility
@@ -32,8 +36,57 @@ SysConfig uses gRPC over Unix sockets for communication between the service and 
 To start the SysConfig service:
 
 ```bash
+# Start with default socket
+sysconfig
+
+# Start with custom socket
 sysconfig -s /path/to/socket
+
+# Start with KDL configuration file
+sysconfig -c /path/to/config.kdl
+
+# Validate KDL configuration without applying (dry-run)
+sysconfig -c /path/to/config.kdl --dry-run
+
+# Watch KDL configuration file for changes
+sysconfig -c /path/to/config.kdl --watch
+
+# Show configuration summary
+sysconfig -c /path/to/config.kdl --summary
 ```
+
+### KDL Configuration Format
+
+SysConfig supports KDL configuration files with the following structure:
+
+```kdl
+sysconfig {
+    hostname "my-host"
+    
+    nameserver "8.8.8.8"
+    nameserver "8.8.4.4"
+    
+    interface "eth0" {
+        address name="v4" kind="dhcp4"
+    }
+    
+    interface "eth1" selector="mac:00:11:22:33:44:55" {
+        address name="v4" kind="static" "192.168.1.100/24"
+        address name="v6" kind="static" "2001:db8::1/64"
+    }
+}
+```
+
+### KDL Configuration Options
+
+- **hostname**: Sets the system hostname
+- **nameserver**: Adds a DNS nameserver (can be specified multiple times)
+- **interface**: Configures a network interface
+  - `selector`: Optional MAC address selector for hardware-independent configuration
+  - `address`: Configures an address on the interface
+    - `name`: Address identifier
+    - `kind`: Address type (`dhcp4`, `dhcp6`, `static`, `addrconf`)
+    - Address value (required for static addresses)
 
 ### Writing Plugins
 
@@ -85,9 +138,49 @@ impl PluginTrait for MyPlugin {
 
 ### Configuration Files
 
-SysConfig uses a specific format for configuration files. These files define the system settings that will be applied by the service and its plugins.
+SysConfig supports two configuration file formats:
 
-For detailed information on how to write configuration files, including syntax, structure, and examples, see the [Configuration File Format Guide](docs/config-file-format.md).
+1. **KDL Format** (Recommended): A modern, expressive configuration language that integrates well with system provisioning tools. KDL files use the `.kdl` extension.
+
+2. **Legacy Format**: The original configuration format documented in the [Configuration File Format Guide](docs/config-file-format.md).
+
+#### Example KDL Configurations
+
+##### Minimal Configuration
+```kdl
+sysconfig {
+    hostname "minimal-host"
+    nameserver "9.9.9.9"
+    interface "eth0" {
+        address name="v4" kind="dhcp4"
+    }
+}
+```
+
+##### Production Configuration
+```kdl
+sysconfig {
+    hostname "production-server"
+    
+    // DNS configuration with fallbacks
+    nameserver "9.9.9.9"
+    nameserver "149.112.112.112"
+    nameserver "1.1.1.1"
+    
+    // Primary interface with static IPs
+    interface "net0" selector="mac:00:0c:29:3e:4f:50" {
+        address name="v4-primary" kind="static" "192.168.1.200/24"
+        address name="v6-primary" kind="static" "2001:db8:1::200/64"
+    }
+    
+    // Management interface
+    interface "net1" selector="mac:00:0c:29:3e:4f:51" {
+        address name="mgmt" kind="static" "10.0.0.200/24"
+    }
+}
+```
+
+For more examples, see the `examples/` directory.
 
 ### SMF Integration
 

@@ -1,0 +1,12 @@
+// Minimal KDL configuration file for sysconfig
+// This demonstrates the simplest possible configuration
+
+sysconfig {
+    hostname "minimal-host"
+
+    nameserver "9.9.9.9"
+
+    interface "eth0" {
+        address name="v4" kind="dhcp4"
+    }
+}
