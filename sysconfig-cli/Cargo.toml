@@ -1,0 +1,24 @@
+[package]
+name = "sysconfig-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tonic = "0.12"
+prost = "0.13"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+jsonpath_lib = "0.3"
+anyhow = "1.0"
+tower = "0.5"
+hyper-util = { version = "0.1", features = ["tokio"] }
+colored = "2.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = "0.4"
+libc = "0.2"
+
+[build-dependencies]
+tonic-build = "0.12"

@@ -1,0 +1,113 @@
+{
+  "network": {
+    "hostname": "test-system",
+    "domain": "example.com",
+    "dns": {
+      "nameservers": [
+        "8.8.8.8",
+        "8.8.4.4"
+      ],
+      "search": [
+        "example.com",
+        "local"
+      ]
+    },
+    "interfaces": {
+      "eth0": {
+        "enabled": true,
+        "dhcp": false,
+        "ip": "192.168.1.100",
+        "netmask": "255.255.255.0",
+        "gateway": "192.168.1.1",
+        "mtu": 1500
+      },
+      "eth1": {
+        "enabled": false,
+        "dhcp": true
+      }
+    }
+  },
+  "system": {
+    "timezone": "America/Los_Angeles",
+    "locale": "en_US.UTF-8",
+    "keyboard": "us",
+    "ntp": {
+      "enabled": true,
+      "servers": [
+        "time.nist.gov",
+        "pool.ntp.org"
+      ]
+    }
+  },
+  "storage": {
+    "pools": {
+      "rpool": {
+        "type": "zfs",
+        "devices": ["/dev/sda"],
+        "mountpoint": "/",
+        "compression": "lz4",
+        "encryption": false
+      }
+    },
+    "filesystems": {
+      "/home": {
+        "pool": "rpool",
+        "quota": "100G",
+        "reservation": "10G"
+      },
+      "/var": {
+        "pool": "rpool",
+        "quota": "50G"
+      }
+    }
+  },
+  "services": {
+    "ssh": {
+      "enabled": true,
+      "port": 22,
+      "permitRootLogin": false,
+      "passwordAuthentication": true
+    },
+    "firewall": {
+      "enabled": true,
+      "defaultPolicy": "deny",
+      "rules": [
+        {
+          "name": "allow-ssh",
+          "port": 22,
+          "protocol": "tcp",
+          "action": "allow"
+        },
+        {
+          "name": "allow-http",
+          "port": 80,
+          "protocol": "tcp",
+          "action": "allow"
+        }
+      ]
+    }
+  },
+  "users": {
+    "admin": {
+      "uid": 1000,
+      "gid": 1000,
+      "shell": "/bin/bash",
+      "home": "/home/admin",
+      "groups": ["wheel", "staff"]
+    }
+  },
+  "packages": {
+    "installed": [
+      "vim",
+      "git",
+      "build-essential"
+    ],
+    "repositories": [
+      {
+        "name": "main",
+        "url": "https://pkg.example.com/main",
+        "enabled": true
+      }
+    ]
+  }
+}
