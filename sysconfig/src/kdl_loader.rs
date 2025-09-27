@@ -2,7 +2,7 @@ use crate::kdl_parser::{parse_kdl_file, parse_kdl_str, KdlSysConfig};
 use crate::{Error, Result, SysConfigService, SystemState};
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// KDL Configuration Loader
 ///
@@ -245,10 +245,8 @@ impl KdlConfigLoader {
     }
 
     /// Watch a KDL configuration file for changes
-    #[cfg(feature = "watch")]
     pub async fn watch<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         use std::fs;
-        use std::time::SystemTime;
         use tokio::time::{interval, Duration};
 
         let path = path.as_ref().to_path_buf();

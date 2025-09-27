@@ -17,6 +17,9 @@ pub mod kdl_parser;
 // KDL loader module for loading and applying KDL configurations
 pub mod kdl_loader;
 
+// State management module for handling state persistence and history
+pub mod state_manager;
+
 // Re-export the config types for convenience
 pub use config::SysConfig;
 
