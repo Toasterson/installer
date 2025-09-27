@@ -2,13 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use sysconfig_plugins::tasks::files::Files;
+use sysconfig_plugins::tasks::network_settings::NetworkSettings;
+use sysconfig_plugins::TaskHandler;
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
-use tracing::{error, info};
-use sysconfig_plugins::tasks::network_settings::NetworkSettings;
-use sysconfig_plugins::tasks::files::Files;
-use sysconfig_plugins::TaskHandler;
+use tracing::{error, info, warn};
 
 // Local proto module generated from ../sysconfig/proto/sysconfig.proto
 mod proto {
@@ -34,22 +34,47 @@ struct Args {
 }
 
 fn default_sysconfig_socket_path() -> String {
-    "/var/run/sysconfig.sock".to_string()
+    if is_running_as_root() {
+        "/var/run/sysconfig.sock".to_string()
+    } else {
+        // Use XDG_RUNTIME_DIR for non-root users
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_else(|_| format!("/tmp/run-{}", unsafe { libc::geteuid() }));
+        format!("{}/sysconfig.sock", runtime_dir)
+    }
 }
 
 fn default_plugin_socket_path() -> String {
-    "/var/run/sysconfig-illumos-base.sock".to_string()
+    if is_running_as_root() {
+        "/var/run/sysconfig-illumos-base.sock".to_string()
+    } else {
+        // Use XDG_RUNTIME_DIR for non-root users
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_else(|_| format!("/tmp/run-{}", unsafe { libc::geteuid() }));
+        format!("{}/sysconfig-illumos-base.sock", runtime_dir)
+    }
 }
 
 #[derive(Default)]
 struct IllumosBasePlugin {
-    inner: Arc<RwLock<PluginState>>, 
+    inner: Arc<RwLock<PluginState>>,
 }
 
 #[derive(Default)]
 struct PluginState {
     plugin_id: Option<String>,
     service_socket_path: Option<String>,
+    auto_dry_run: bool,
+}
+
+/// Check if the process is running as root
+fn is_running_as_root() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
+/// Check if we should enable automatic dry-run mode
+fn should_auto_enable_dry_run() -> bool {
+    !is_running_as_root()
 }
 
 #[tonic::async_trait]
@@ -59,23 +84,45 @@ impl PluginService for IllumosBasePlugin {
         request: Request<proto::InitializeRequest>,
     ) -> Result<Response<proto::InitializeResponse>, Status> {
         let req = request.into_inner();
+        let auto_dry_run = should_auto_enable_dry_run();
         {
             let mut st = self.inner.write().await;
             st.plugin_id = Some(req.plugin_id.clone());
             st.service_socket_path = Some(req.service_socket_path.clone());
+            st.auto_dry_run = auto_dry_run;
         }
-        info!(plugin_id = %req.plugin_id, service = %req.service_socket_path, "illumos base plugin initialized");
-        Ok(Response::new(proto::InitializeResponse { success: true, error: String::new() }))
+
+        if auto_dry_run {
+            warn!(
+                "Running as non-root user (UID: {}). Auto-enabling dry-run mode for testing.",
+                unsafe { libc::geteuid() }
+            );
+            info!("All operations will be simulated and no actual changes will be made to the system.");
+            info!(
+                "Using XDG_RUNTIME_DIR for socket paths: {}",
+                std::env::var("XDG_RUNTIME_DIR")
+                    .unwrap_or_else(|_| format!("/tmp/run-{}", unsafe { libc::geteuid() }))
+            );
+        }
+
+        info!(plugin_id = %req.plugin_id, service = %req.service_socket_path, auto_dry_run = %auto_dry_run, "illumos base plugin initialized");
+        Ok(Response::new(proto::InitializeResponse {
+            success: true,
+            error: String::new(),
+        }))
     }
 
     async fn get_config(
         &self,
         _request: Request<proto::GetConfigRequest>,
     ) -> Result<Response<proto::GetConfigResponse>, Status> {
+        let auto_dry_run = self.inner.read().await.auto_dry_run;
         let config = serde_json::json!({
             "name": "illumos-base",
             "os": "illumos",
             "tasks": ["storage", "users", "packages", "services", "firewall", "files", "network.links", "network.settings"],
+            "auto_dry_run": auto_dry_run,
+            "running_as_root": is_running_as_root(),
         })
         .to_string();
         Ok(Response::new(proto::GetConfigResponse { config }))
@@ -86,37 +133,55 @@ impl PluginService for IllumosBasePlugin {
         request: Request<proto::DiffStateRequest>,
     ) -> Result<Response<proto::DiffStateResponse>, Status> {
         let req = request.into_inner();
-        let current: serde_json::Value = serde_json::from_str(&req.current_state).unwrap_or(serde_json::Value::Null);
+        let current: serde_json::Value =
+            serde_json::from_str(&req.current_state).unwrap_or(serde_json::Value::Null);
         let desired: serde_json::Value = match serde_json::from_str(&req.desired_state) {
             Ok(v) => v,
             Err(_) => {
-                return Ok(Response::new(proto::DiffStateResponse { different: false, changes: vec![] }));
+                return Ok(Response::new(proto::DiffStateResponse {
+                    different: false,
+                    changes: vec![],
+                }));
             }
         };
 
         let mut task_changes: Vec<sysconfig_plugins::TaskChange> = Vec::new();
 
         if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
-            let cur_settings = current.get("network").and_then(|n| n.get("settings")).cloned().unwrap_or(serde_json::Value::Null);
-            if let Ok(mut ch) = NetworkSettings::default().diff(&cur_settings, settings) { task_changes.append(&mut ch); }
+            let cur_settings = current
+                .get("network")
+                .and_then(|n| n.get("settings"))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
+            if let Ok(mut ch) = NetworkSettings::default().diff(&cur_settings, settings) {
+                task_changes.append(&mut ch);
+            }
         }
         if let Some(files) = desired.get("files") {
-            if let Ok(mut ch) = Files::default().diff(&serde_json::Value::Null, files) { task_changes.append(&mut ch); }
+            if let Ok(mut ch) = Files::default().diff(&serde_json::Value::Null, files) {
+                task_changes.append(&mut ch);
+            }
         }
 
-        let changes: Vec<proto::StateChange> = task_changes.into_iter().map(|c| proto::StateChange {
-            r#type: match c.change_type {
-                sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
-                sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
-                sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
-            },
-            path: c.path,
-            old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
-            new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
-            verbose: c.verbose,
-        }).collect();
+        let changes: Vec<proto::StateChange> = task_changes
+            .into_iter()
+            .map(|c| proto::StateChange {
+                r#type: match c.change_type {
+                    sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
+                    sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
+                    sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
+                },
+                path: c.path,
+                old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
+                new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
+                verbose: c.verbose,
+            })
+            .collect();
 
-        Ok(Response::new(proto::DiffStateResponse { different: !changes.is_empty(), changes }))
+        Ok(Response::new(proto::DiffStateResponse {
+            different: !changes.is_empty(),
+            changes,
+        }))
     }
 
     async fn apply_state(
@@ -124,6 +189,18 @@ impl PluginService for IllumosBasePlugin {
         request: Request<proto::PluginApplyStateRequest>,
     ) -> Result<Response<proto::PluginApplyStateResponse>, Status> {
         let req = request.into_inner();
+
+        // Check if we should force dry-run mode
+        let auto_dry_run = self.inner.read().await.auto_dry_run;
+        let effective_dry_run = req.dry_run || auto_dry_run;
+
+        if auto_dry_run && !req.dry_run {
+            info!("Auto-enabling dry-run mode since running as non-root user");
+        }
+
+        if effective_dry_run {
+            info!("DRY-RUN MODE: Simulating state changes without applying them");
+        }
 
         // Parse desired state and apply network.settings if present
         let desired: serde_json::Value = match serde_json::from_str(&req.state) {
@@ -146,8 +223,23 @@ impl PluginService for IllumosBasePlugin {
                     changes: vec![],
                 }));
             }
-            match NetworkSettings::default().apply(settings, req.dry_run) {
+
+            if effective_dry_run {
+                info!("DRY-RUN: Would apply network settings: {}", settings);
+            }
+
+            match NetworkSettings::default().apply(settings, effective_dry_run) {
                 Ok(mut changes) => {
+                    for change in &changes {
+                        if effective_dry_run {
+                            info!(
+                                "DRY-RUN: Would {} {} - new value: {:?}",
+                                change.change_type.as_str(),
+                                change.path,
+                                change.new_value
+                            );
+                        }
+                    }
                     task_changes.append(&mut changes);
                 }
                 Err(e) => {
@@ -162,8 +254,22 @@ impl PluginService for IllumosBasePlugin {
 
         // Apply files task if present at top-level: files: [ { ... } ]
         if let Some(files) = desired.get("files") {
-            match Files::default().apply(files, req.dry_run) {
+            if effective_dry_run {
+                info!("DRY-RUN: Would apply file changes: {}", files);
+            }
+
+            match Files::default().apply(files, effective_dry_run) {
                 Ok(mut changes) => {
+                    for change in &changes {
+                        if effective_dry_run {
+                            info!(
+                                "DRY-RUN: Would {} {} - new value: {:?}",
+                                change.change_type.as_str(),
+                                change.path,
+                                change.new_value
+                            );
+                        }
+                    }
                     task_changes.append(&mut changes);
                 }
                 Err(e) => {
@@ -176,19 +282,33 @@ impl PluginService for IllumosBasePlugin {
             }
         }
 
-        let changes: Vec<proto::StateChange> = task_changes.into_iter().map(|c| proto::StateChange {
-            r#type: match c.change_type {
-                sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
-                sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
-                sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
-            },
-            path: c.path,
-            old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
-            new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
-            verbose: c.verbose,
-        }).collect();
+        let changes: Vec<proto::StateChange> = task_changes
+            .into_iter()
+            .map(|c| proto::StateChange {
+                r#type: match c.change_type {
+                    sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
+                    sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
+                    sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
+                },
+                path: c.path,
+                old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
+                new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
+                verbose: c.verbose,
+            })
+            .collect();
 
-        let resp = proto::PluginApplyStateResponse { success: true, error: String::new(), changes };
+        if effective_dry_run && !changes.is_empty() {
+            info!(
+                "DRY-RUN: Total of {} changes would be applied",
+                changes.len()
+            );
+        }
+
+        let resp = proto::PluginApplyStateResponse {
+            success: true,
+            error: String::new(),
+            changes,
+        };
         Ok(Response::new(resp))
     }
 
@@ -197,15 +317,25 @@ impl PluginService for IllumosBasePlugin {
         request: Request<proto::PluginExecuteActionRequest>,
     ) -> Result<Response<proto::PluginExecuteActionResponse>, Status> {
         let req = request.into_inner();
-        let result = format!("illumos-base executed action '{}' with params '{}'", req.action, req.parameters);
-        Ok(Response::new(proto::PluginExecuteActionResponse { success: true, error: String::new(), result }))
+        let result = format!(
+            "illumos-base executed action '{}' with params '{}'",
+            req.action, req.parameters
+        );
+        Ok(Response::new(proto::PluginExecuteActionResponse {
+            success: true,
+            error: String::new(),
+            result,
+        }))
     }
 
     async fn notify_state_change(
         &self,
         _request: Request<proto::NotifyStateChangeRequest>,
     ) -> Result<Response<proto::NotifyStateChangeResponse>, Status> {
-        Ok(Response::new(proto::NotifyStateChangeResponse { success: true, error: String::new() }))
+        Ok(Response::new(proto::NotifyStateChangeResponse {
+            success: true,
+            error: String::new(),
+        }))
     }
 }
 
@@ -270,7 +400,9 @@ async fn register_with_sysconfig(service_socket: String, plugin_socket: String) 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     let args = Args::parse();
     let plugin_socket = args.socket.unwrap_or_else(default_plugin_socket_path);
@@ -288,6 +420,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let incoming = UnixListenerStream::new(listener);
 
     let plugin = IllumosBasePlugin::default();
+
+    // Display startup information about dry-run mode
+    if should_auto_enable_dry_run() {
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_else(|_| format!("/tmp/run-{}", unsafe { libc::geteuid() }));
+        warn!("====================================================================");
+        warn!(
+            "TESTING MODE ACTIVATED - Running as non-root user (UID: {})",
+            unsafe { libc::geteuid() }
+        );
+        warn!("All operations will be simulated (dry-run) and logged.");
+        warn!("No actual system changes will be made.");
+        warn!("Socket paths using: {}", runtime_dir);
+        warn!("  - Plugin socket: {}", plugin_socket);
+        warn!("  - Service socket: {}", service_socket);
+        warn!("To run with actual changes, execute this plugin as root.");
+        warn!("====================================================================");
+    } else {
+        info!("Running as root user - operations will make actual system changes");
+    }
 
     info!(socket = %plugin_socket, "Starting illumos-base plugin server");
 

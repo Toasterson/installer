@@ -1,0 +1,365 @@
+// Test Configuration for Sysconfig Provisioning Plugin
+// This file is used for end-to-end testing with dry-run mode
+
+// Global provisioning settings
+provisioning {
+    // Source priorities - which sources to check and in what order
+    sources {
+        priority "local" 10
+        priority "cloud-init" 20
+        priority "ec2" 30
+        priority "gcp" 40
+        priority "azure" 50
+    }
+
+    // Local source configuration file (for testing)
+    local-config "/tmp/test-provisioning-local.json"
+
+    // Cloud-init configuration paths (for testing)
+    cloud-init {
+        meta-data "/tmp/test-cloud-init/meta-data"
+        user-data "/tmp/test-cloud-init/user-data"
+        network-config "/tmp/test-cloud-init/network-config"
+    }
+}
+
+// System configuration that will be applied
+sysconfig {
+    // Set the system hostname
+    hostname "test-provisioning-host"
+
+    // Configure DNS nameservers for testing
+    nameserver "9.9.9.9"          // Quad9 primary
+    nameserver "149.112.112.112"  // Quad9 secondary
+    nameserver "1.1.1.1"          // Cloudflare primary
+    nameserver "1.0.0.1"          // Cloudflare secondary
+    nameserver "8.8.8.8"          // Google primary
+    nameserver "8.8.4.4"          // Google secondary
+
+    // DNS search domains
+    search "test.local"
+    search "provisioning.local"
+    search "example.com"
+
+    // Primary network interface - DHCP configuration for testing
+    interface "net0" {
+        address name="v4-dhcp" kind="dhcp4"
+        address name="v6-auto" kind="addrconf"
+        mtu 1500
+        description "Primary test interface - DHCP"
+    }
+
+    // Secondary interface - Static IP for testing
+    interface "net1" selector="mac:52:54:00:12:34:56" {
+        address name="v4-static" kind="static" "192.168.100.10/24"
+        address name="v6-static" kind="static" "fd00:test::10/64"
+        gateway "192.168.100.1"
+        mtu 1500
+        description "Secondary test interface - Static"
+    }
+
+    // Management interface - Mixed configuration
+    interface "net2" {
+        address name="v4-mgmt" kind="static" "10.0.0.50/24"
+        address name="v6-mgmt" kind="dhcp6"
+        gateway "10.0.0.1"
+        description "Management interface"
+    }
+
+    // Test VLAN interface
+    interface "net0.100" {
+        vlan-id 100
+        parent "net0"
+        address name="vlan-v4" kind="static" "172.16.100.10/24"
+        description "VLAN 100 test interface"
+    }
+
+    // Loopback interface (always present)
+    interface "lo0" {
+        address name="v4-loop" kind="static" "127.0.0.1/8"
+        address name="v6-loop" kind="static" "::1/128"
+        description "Loopback interface"
+    }
+
+    // Static routes for testing
+    route "10.10.0.0/16" {
+        gateway "192.168.100.1"
+        interface "net1"
+        metric 100
+    }
+
+    route "172.16.0.0/12" {
+        gateway "10.0.0.1"
+        interface "net2"
+        metric 200
+    }
+
+    // Default route (if not from DHCP)
+    route "0.0.0.0/0" {
+        gateway "192.168.100.1"
+        interface "net1"
+        metric 1000
+    }
+
+    // NTP servers for time synchronization
+    ntp-server "pool.ntp.org"
+    ntp-server "time.cloudflare.com"
+    ntp-server "time.google.com"
+
+    // Timezone configuration
+    timezone "America/Los_Angeles"
+}
+
+// User configuration for testing
+users {
+    user "testadmin" {
+        uid 1000
+        group "staff"
+        groups "wheel" "adm" "sys"
+        home "/home/testadmin"
+        shell "/bin/bash"
+        gecos "Test Administrator"
+        create-home true
+        sudo true
+
+        // SSH keys for testing (these are dummy keys)
+        ssh-authorized-keys "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7test1... testadmin@test"
+        ssh-authorized-keys "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest2... testadmin@backup"
+    }
+
+    user "appuser" {
+        uid 2000
+        group "apps"
+        groups "users"
+        home "/home/appuser"
+        shell "/bin/ksh"
+        gecos "Application User"
+        create-home true
+        sudo false
+
+        ssh-authorized-keys "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7app1... appuser@test"
+    }
+
+    // System user for services
+    user "svcuser" {
+        uid 999
+        group "daemon"
+        home "/var/lib/svcuser"
+        shell "/bin/false"
+        gecos "Service Account"
+        create-home false
+        sudo false
+    }
+}
+
+// SSH configuration for root (separate from users)
+ssh {
+    // Root SSH keys for emergency access
+    authorized-keys "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7root1... root@emergency"
+    authorized-keys "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIRoot2... root@backup"
+
+    // SSH daemon configuration hints
+    permit-root-login "without-password"
+    password-authentication false
+    pubkey-authentication true
+}
+
+// Services to enable/disable
+services {
+    enable "ssh"
+    enable "ntp"
+    enable "nscd"
+    enable "dns/client"
+
+    disable "telnet"
+    disable "ftp"
+    disable "rlogin"
+    disable "rsh"
+}
+
+// Firewall rules (basic)
+firewall {
+    // Default policies
+    default-policy "input" "drop"
+    default-policy "forward" "drop"
+    default-policy "output" "accept"
+
+    // Allow rules
+    allow "ssh" {
+        protocol "tcp"
+        port 22
+        source "any"
+    }
+
+    allow "http" {
+        protocol "tcp"
+        port 80
+        source "192.168.100.0/24"
+    }
+
+    allow "https" {
+        protocol "tcp"
+        port 443
+        source "any"
+    }
+
+    allow "ping" {
+        protocol "icmp"
+        icmp-type "echo-request"
+        source "any"
+    }
+
+    allow "dhcp-client" {
+        protocol "udp"
+        port 68
+        source "any"
+    }
+}
+
+// Files to create/manage (for testing file provisioning)
+files {
+    file "/etc/provisioning-test.conf" {
+        ensure "present"
+        content """
+            # Provisioning Test Configuration
+            # Generated by sysconfig provisioning plugin
+
+            TEST_MODE=enabled
+            DRY_RUN=true
+            ENVIRONMENT=testing
+            VERSION=1.0.0
+            """
+        mode "0644"
+        owner "root"
+        group "sys"
+    }
+
+    file "/etc/motd" {
+        ensure "present"
+        content """
+            ############################################################
+            #                                                          #
+            #  Test Provisioning System - Dry Run Mode                #
+            #  All changes are simulated                              #
+            #                                                          #
+            ############################################################
+            """
+        mode "0644"
+    }
+
+    file "/root/.profile.local" {
+        ensure "present"
+        content """
+            # Local profile additions for testing
+            export PS1='[\u@provisioning-test \W]\\$ '
+            export EDITOR=vi
+            alias ll='ls -la'
+            """
+        mode "0600"
+        owner "root"
+    }
+}
+
+// Package management (for future use)
+packages {
+    ensure "vim"
+    ensure "tmux"
+    ensure "git"
+    ensure "curl"
+    ensure "wget"
+    ensure "jq"
+    ensure "htop"
+    ensure "rsync"
+
+    remove "telnet"
+    remove "ftp"
+}
+
+// User data script for cloud-init style provisioning
+user-data {
+    script """
+        #!/bin/bash
+
+        # Test provisioning script
+        echo "Starting test provisioning..." | tee -a /var/log/provisioning.log
+
+        # Create test directories
+        mkdir -p /opt/test/{bin,etc,lib,log}
+
+        # Set up test environment
+        cat > /opt/test/etc/config <<EOF
+        PROVISIONED=true
+        PROVISIONED_AT=$(date -Iseconds)
+        PROVISIONING_MODE=test
+        DRY_RUN=enabled
+        EOF
+
+        # Log completion
+        echo "Test provisioning completed at $(date)" | tee -a /var/log/provisioning.log
+        """
+
+    run-once true
+    output "/var/log/user-data.log"
+}
+
+// Metadata for tracking and debugging
+metadata {
+    provisioning-version "1.0.0"
+    provisioning-date "2024-01-01"
+    provisioning-source "local-test"
+    environment "testing"
+    datacenter "local"
+    rack "test-rack"
+    role "test-node"
+
+    // Custom test metadata
+    test-mode true
+    dry-run-enabled true
+    auto-revert false
+
+    // Tags for grouping/filtering
+    tags {
+        environment "test"
+        purpose "provisioning-validation"
+        owner "sysadmin"
+        cost-center "it-ops"
+    }
+}
+
+// Testing scenarios - different configurations to test
+test-scenarios {
+    scenario "basic-dhcp" {
+        description "Test basic DHCP configuration"
+        hostname "dhcp-test"
+        interfaces {
+            interface "net0" {
+                address name="v4" kind="dhcp4"
+                address name="v6" kind="dhcp6"
+            }
+        }
+    }
+
+    scenario "static-network" {
+        description "Test static network configuration"
+        hostname "static-test"
+        interfaces {
+            interface "net0" {
+                address name="v4" kind="static" "10.0.0.100/24"
+                gateway "10.0.0.1"
+            }
+        }
+    }
+
+    scenario "multi-interface" {
+        description "Test multiple interface configuration"
+        hostname "multi-test"
+        interfaces {
+            interface "net0" {
+                address name="v4" kind="dhcp4"
+            }
+            interface "net1" {
+                address name="v4" kind="static" "192.168.1.100/24"
+            }
+        }
+    }
+}

@@ -150,10 +150,9 @@ impl CloudInitSource {
 
         // Find and mount config drive
         let device = utils::find_device_by_label("config-2")
-            .await
-            .or_else(async || utils::find_device_by_label("CONFIG-2").await)
-            .or_else(async || utils::find_device_by_label("cidata").await)
-            .or_else(async || utils::find_device_by_label("CIDATA").await)
+            .or_else(|| utils::find_device_by_label("CONFIG-2"))
+            .or_else(|| utils::find_device_by_label("cidata"))
+            .or_else(|| utils::find_device_by_label("CIDATA"))
             .context("Config drive not found")?;
 
         // Try each potential mount path
@@ -174,22 +173,19 @@ impl CloudInitSource {
     ) -> Result<ProvisioningConfig> {
         // Create mount point if needed
         if !mount_path.exists() {
-            tokio::fs::create_dir_all(mount_path)
-                .await
-                .context("Failed to create mount point")?;
+            std::fs::create_dir_all(mount_path).context("Failed to create mount point")?;
         }
 
         // Mount filesystem
         utils::mount_filesystem(device, mount_path, Some("iso9660"))
-            .await
-            .or_else(async |_| utils::mount_filesystem(device, mount_path, Some("vfat")).await)
+            .or_else(|_| utils::mount_filesystem(device, mount_path, Some("vfat")))
             .context("Failed to mount config drive")?;
 
         // Read configuration
         let result = self.read_config_drive(mount_path).await;
 
         // Unmount
-        let _ = utils::unmount_filesystem(mount_path).await;
+        let _ = utils::unmount_filesystem(mount_path);
 
         result
     }

@@ -177,7 +177,7 @@ pub fn is_block_device(_path: &std::path::Path) -> bool {
 
 /// Mount a filesystem
 #[cfg(unix)]
-pub async fn mount_filesystem(
+pub fn mount_filesystem(
     device: &std::path::Path,
     mount_point: &std::path::Path,
     fs_type: Option<&str>,
@@ -185,8 +185,7 @@ pub async fn mount_filesystem(
     use std::process::Command;
 
     // Ensure mount point exists
-    tokio::fs::create_dir_all(mount_point)
-        .await
+    std::fs::create_dir_all(mount_point)
         .with_context(|| format!("Failed to create mount point: {:?}", mount_point))?;
 
     let mut cmd = Command::new("mount");
@@ -216,7 +215,7 @@ pub async fn mount_filesystem(
 
 /// Unmount a filesystem
 #[cfg(unix)]
-pub async fn unmount_filesystem(mount_point: &std::path::Path) -> Result<()> {
+pub fn unmount_filesystem(mount_point: &std::path::Path) -> Result<()> {
     use std::process::Command;
 
     let output = Command::new("umount")
@@ -237,7 +236,7 @@ pub async fn unmount_filesystem(mount_point: &std::path::Path) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-pub async fn mount_filesystem(
+pub fn mount_filesystem(
     _device: &std::path::Path,
     _mount_point: &std::path::Path,
     _fs_type: Option<&str>,
@@ -246,19 +245,19 @@ pub async fn mount_filesystem(
 }
 
 #[cfg(not(unix))]
-pub async fn unmount_filesystem(_mount_point: &std::path::Path) -> Result<()> {
+pub fn unmount_filesystem(_mount_point: &std::path::Path) -> Result<()> {
     Err(anyhow::anyhow!("Unmounting not supported on this platform"))
 }
 
 /// Find a device by label
 #[cfg(target_os = "linux")]
-pub async fn find_device_by_label(label: &str) -> Option<std::path::PathBuf> {
+pub fn find_device_by_label(label: &str) -> Option<std::path::PathBuf> {
     let path = format!("/dev/disk/by-label/{}", label);
     let device_path = std::path::Path::new(&path);
 
     if device_path.exists() {
         // Resolve symlink to actual device
-        if let Ok(resolved) = tokio::fs::read_link(device_path).await {
+        if let Ok(resolved) = std::fs::read_link(device_path) {
             return Some(resolved);
         }
         return Some(device_path.to_path_buf());
@@ -281,19 +280,20 @@ pub async fn find_device_by_label(label: &str) -> Option<std::path::PathBuf> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub async fn find_device_by_label(_label: &str) -> Option<std::path::PathBuf> {
+pub fn find_device_by_label(_label: &str) -> Option<std::path::PathBuf> {
     // Platform-specific implementation needed
     None
 }
 
 /// Decode base64 data
 pub fn decode_base64(data: &str) -> Result<Vec<u8>> {
-    base64::decode(data).context("Failed to decode base64 data")
+    base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data)
+        .context("Failed to decode base64 data")
 }
 
 /// Encode data as base64
 pub fn encode_base64(data: &[u8]) -> String {
-    base64::encode(data)
+    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data)
 }
 
 #[cfg(test)]

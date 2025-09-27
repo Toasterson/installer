@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::path::Path;
 use tracing::{debug, info};
 
@@ -134,27 +134,23 @@ impl LocalSource {
 
     /// Try to load configuration from any supported format
     pub async fn load_any(&self, base_path: &Path) -> Result<ProvisioningConfig> {
-        // Try different file extensions in order of preference
-        let extensions = vec![
-            ("kdl", Self::load_kdl),
-            ("yaml", Self::load_yaml),
-            ("yml", Self::load_yaml),
-            ("json", Self::load_json),
-            ("toml", Self::load_toml),
-        ];
+        let extension = base_path
+            .extension()
+            .map(|osstr| osstr.to_str())
+            .ok_or(anyhow!("config file has no extension"))?
+            .ok_or(anyhow!("extension string is not unicode"))?;
 
-        for (ext, loader) in extensions {
-            let path = base_path.with_extension(ext);
-            if path.exists() {
-                debug!("Found configuration file: {:?}", path);
-                return loader(self, &path).await;
-            }
-        }
-
-        Err(anyhow::anyhow!(
-            "No configuration file found at {:?} with any supported extension",
-            base_path
-        ))
+        let config = match extension {
+            "kdl" => self.load_kdl(base_path).await,
+            "toml" => self.load_toml(base_path).await,
+            "yaml" => self.load_yaml(base_path).await,
+            "json" => self.load_json(base_path).await,
+            _ => Err(anyhow::anyhow!(
+                "Unsupported configuration file extension: {:?}",
+                base_path.extension()
+            )),
+        };
+        config
     }
 }
 

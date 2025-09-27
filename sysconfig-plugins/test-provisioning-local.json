@@ -1,0 +1,183 @@
+{
+  "hostname": "local-test-provisioning",
+  "nameservers": [
+    "1.1.1.1",
+    "1.0.0.1",
+    "8.8.8.8",
+    "8.8.4.4"
+  ],
+  "search_domains": [
+    "test.local",
+    "example.com",
+    "provisioning.test"
+  ],
+  "interfaces": {
+    "net0": {
+      "mac_address": "52:54:00:ab:cd:ef",
+      "mtu": 1500,
+      "enabled": true,
+      "description": "Primary network interface",
+      "addresses": [
+        {
+          "type": "dhcp4",
+          "primary": true
+        },
+        {
+          "type": "dhcp6",
+          "primary": false
+        }
+      ]
+    },
+    "net1": {
+      "mac_address": "52:54:00:12:34:56",
+      "mtu": 1500,
+      "enabled": true,
+      "description": "Secondary static interface",
+      "addresses": [
+        {
+          "type": "static",
+          "address": "192.168.200.100/24",
+          "gateway": "192.168.200.1",
+          "primary": true
+        },
+        {
+          "type": "static",
+          "address": "fd00:200::100/64",
+          "gateway": "fd00:200::1",
+          "primary": false
+        }
+      ]
+    },
+    "net2": {
+      "mtu": 9000,
+      "enabled": true,
+      "description": "Storage network interface",
+      "addresses": [
+        {
+          "type": "static",
+          "address": "10.10.10.100/24",
+          "primary": true
+        }
+      ]
+    },
+    "net0.100": {
+      "vlan_id": 100,
+      "parent": "net0",
+      "enabled": true,
+      "description": "VLAN 100 on net0",
+      "addresses": [
+        {
+          "type": "static",
+          "address": "172.16.100.50/24",
+          "primary": true
+        }
+      ]
+    }
+  },
+  "ssh_authorized_keys": [
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDexample1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ test@provisioning",
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey1234567890ABCDEFGHIJ backup@provisioning"
+  ],
+  "users": [
+    {
+      "name": "provisioning-admin",
+      "gecos": "Provisioning Administrator",
+      "uid": 1001,
+      "group": "staff",
+      "groups": [
+        "wheel",
+        "adm",
+        "sys",
+        "operator"
+      ],
+      "home": "/home/provisioning-admin",
+      "shell": "/bin/bash",
+      "create_home": true,
+      "sudo": true,
+      "ssh_authorized_keys": [
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDadmin1234567890 admin@provisioning",
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAdminKey123456 admin-backup@provisioning"
+      ]
+    },
+    {
+      "name": "testuser",
+      "gecos": "Test User Account",
+      "uid": 2001,
+      "group": "users",
+      "groups": [
+        "staff"
+      ],
+      "home": "/home/testuser",
+      "shell": "/bin/ksh",
+      "create_home": true,
+      "sudo": false,
+      "ssh_authorized_keys": [
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDtestuser123456 testuser@provisioning"
+      ]
+    },
+    {
+      "name": "svcacct",
+      "gecos": "Service Account",
+      "uid": 9999,
+      "group": "daemon",
+      "groups": [],
+      "home": "/var/empty",
+      "shell": "/bin/false",
+      "create_home": false,
+      "sudo": false,
+      "ssh_authorized_keys": []
+    }
+  ],
+  "user_data": "#!/bin/bash\n\n# Provisioning test user data script\necho \"Starting provisioning from local source...\" > /var/log/local-provisioning.log\ndate >> /var/log/local-provisioning.log\n\n# Create test marker files\ntouch /tmp/provisioned-by-local-source\necho \"Provisioned at $(date)\" > /tmp/provisioning-timestamp\n\n# Set up test environment\nexport PROVISIONING_SOURCE=local\nexport PROVISIONING_MODE=test\nexport DRY_RUN=true\n\necho \"Provisioning completed\" >> /var/log/local-provisioning.log\n",
+  "metadata": {
+    "source": "local-file",
+    "version": "1.0.0",
+    "environment": "testing",
+    "datacenter": "local-test",
+    "rack": "virtual",
+    "role": "test-provisioning",
+    "provisioning_date": "2024-01-01T00:00:00Z",
+    "test_mode": true,
+    "dry_run": true,
+    "custom_metadata": {
+      "project": "sysconfig-testing",
+      "owner": "infrastructure-team",
+      "purpose": "dry-run-validation",
+      "auto_revert": false,
+      "monitoring_enabled": false
+    }
+  },
+  "routes": [
+    {
+      "destination": "10.0.0.0/8",
+      "gateway": "192.168.200.1",
+      "interface": "net1",
+      "metric": 100
+    },
+    {
+      "destination": "172.16.0.0/12",
+      "gateway": "192.168.200.1",
+      "interface": "net1",
+      "metric": 200
+    },
+    {
+      "destination": "192.168.0.0/16",
+      "gateway": "192.168.200.1",
+      "interface": "net1",
+      "metric": 150
+    },
+    {
+      "destination": "0.0.0.0/0",
+      "gateway": "192.168.200.1",
+      "interface": "net1",
+      "metric": 1000
+    }
+  ],
+  "ntp_servers": [
+    "pool.ntp.org",
+    "time.cloudflare.com",
+    "time.google.com",
+    "time.nist.gov"
+  ],
+  "timezone": "America/Los_Angeles"
+}

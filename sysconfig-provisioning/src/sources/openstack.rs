@@ -112,9 +112,8 @@ impl OpenStackSource {
 
         // Check if config drive is available
         let device = utils::find_device_by_label("config-2")
-            .await
-            .or_else(async || utils::find_device_by_label("CONFIG-2").await)
-            .or_else(async || utils::find_device_by_label("cidata").await)
+            .or_else(|| utils::find_device_by_label("CONFIG-2"))
+            .or_else(|| utils::find_device_by_label("cidata"))
             .context("Config drive not found")?;
 
         // Mount the config drive if not already mounted
@@ -126,17 +125,14 @@ impl OpenStackSource {
 
         // Mount as ISO9660 or FAT
         utils::mount_filesystem(&device, &self.config_drive_path, Some("iso9660"))
-            .await
-            .or_else(async |_| {
-                utils::mount_filesystem(&device, &self.config_drive_path, Some("vfat")).await
-            })
+            .or_else(|_| utils::mount_filesystem(&device, &self.config_drive_path, Some("vfat")))
             .context("Failed to mount config drive")?;
 
         // Read the configuration
         let result = self.read_config_drive().await;
 
         // Unmount when done
-        let _ = utils::unmount_filesystem(&self.config_drive_path).await;
+        let _ = utils::unmount_filesystem(&self.config_drive_path);
 
         result
     }
@@ -262,150 +258,146 @@ impl OpenStackSource {
         let mut search_domains = Vec::new();
         let mut routes = Vec::new();
 
-        // Parse links (physical interfaces)
-        let links = network_data
-            .get("links")
-            .and_then(|l| l.as_array())
-            .unwrap_or(&Vec::new());
-
         let mut link_map = HashMap::new();
-        for link in links {
-            if let Some(id) = link.get("id").and_then(|i| i.as_str()) {
-                let name = link
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or(id)
-                    .to_string();
+        // Parse links (physical interfaces)
+        if let Some(links) = network_data.get("links").and_then(|l| l.as_array()) {
+            for link in links {
+                if let Some(id) = link.get("id").and_then(|i| i.as_str()) {
+                    let name = link
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or(id)
+                        .to_string();
 
-                let interface = InterfaceConfig {
-                    mac_address: link
-                        .get("ethernet_mac_address")
-                        .and_then(|m| m.as_str())
-                        .map(|s| utils::normalize_mac_address(s)),
-                    mtu: link.get("mtu").and_then(|m| m.as_u64()).map(|m| m as u32),
-                    addresses: Vec::new(),
-                    enabled: true,
-                    description: Some("OpenStack network interface".to_string()),
-                    vlan_id: link
-                        .get("vlan_id")
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as u16),
-                    parent: link
-                        .get("vlan_link")
-                        .and_then(|p| p.as_str())
-                        .map(|s| s.to_string()),
-                };
+                    let interface = InterfaceConfig {
+                        mac_address: link
+                            .get("ethernet_mac_address")
+                            .and_then(|m| m.as_str())
+                            .map(|s| utils::normalize_mac_address(s)),
+                        mtu: link.get("mtu").and_then(|m| m.as_u64()).map(|m| m as u32),
+                        addresses: Vec::new(),
+                        enabled: true,
+                        description: Some("OpenStack network interface".to_string()),
+                        vlan_id: link
+                            .get("vlan_id")
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as u16),
+                        parent: link
+                            .get("vlan_link")
+                            .and_then(|p| p.as_str())
+                            .map(|s| s.to_string()),
+                    };
 
-                link_map.insert(id.to_string(), name.clone());
-                interfaces.insert(name, interface);
+                    link_map.insert(id.to_string(), name.clone());
+                    interfaces.insert(name, interface);
+                }
             }
         }
 
         // Parse networks (IP configurations)
-        let networks = network_data
-            .get("networks")
-            .and_then(|n| n.as_array())
-            .unwrap_or(&Vec::new());
+        if let Some(networks) = network_data.get("networks").and_then(|n| n.as_array()) {
+            for network in networks {
+                let link_id = network.get("link").and_then(|l| l.as_str()).unwrap_or("");
 
-        for network in networks {
-            let link_id = network.get("link").and_then(|l| l.as_str()).unwrap_or("");
+                if let Some(interface_name) = link_map.get(link_id) {
+                    if let Some(interface) = interfaces.get_mut(interface_name) {
+                        let network_type = network
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("ipv4");
 
-            if let Some(interface_name) = link_map.get(link_id) {
-                if let Some(interface) = interfaces.get_mut(interface_name) {
-                    let network_type = network
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("ipv4");
-
-                    if network_type == "ipv4_dhcp" || network_type == "dhcp4" {
-                        interface.addresses.push(AddressConfig {
-                            addr_type: AddressType::Dhcp4,
-                            address: None,
-                            gateway: None,
-                            primary: interface.addresses.is_empty(),
-                        });
-                    } else if network_type == "ipv6_dhcp" || network_type == "dhcp6" {
-                        interface.addresses.push(AddressConfig {
-                            addr_type: AddressType::Dhcp6,
-                            address: None,
-                            gateway: None,
-                            primary: false,
-                        });
-                    } else if network_type == "ipv6_slaac" {
-                        interface.addresses.push(AddressConfig {
-                            addr_type: AddressType::Slaac,
-                            address: None,
-                            gateway: None,
-                            primary: false,
-                        });
-                    } else if network_type == "ipv4" || network_type == "ipv6" {
-                        let ip_address = network
-                            .get("ip_address")
-                            .and_then(|ip| ip.as_str())
-                            .unwrap_or("");
-
-                        let netmask = network.get("netmask").and_then(|nm| nm.as_str());
-
-                        let prefix_len = if let Some(nm) = netmask {
-                            utils::netmask_to_cidr(nm).unwrap_or(24)
-                        } else {
-                            if network_type == "ipv6" {
-                                64
-                            } else {
-                                24
-                            }
-                        };
-
-                        if !ip_address.is_empty() {
+                        if network_type == "ipv4_dhcp" || network_type == "dhcp4" {
                             interface.addresses.push(AddressConfig {
-                                addr_type: AddressType::Static,
-                                address: Some(format!("{}/{}", ip_address, prefix_len)),
-                                gateway: network
-                                    .get("gateway")
-                                    .and_then(|g| g.as_str())
-                                    .map(|s| s.to_string()),
+                                addr_type: AddressType::Dhcp4,
+                                address: None,
+                                gateway: None,
                                 primary: interface.addresses.is_empty(),
                             });
+                        } else if network_type == "ipv6_dhcp" || network_type == "dhcp6" {
+                            interface.addresses.push(AddressConfig {
+                                addr_type: AddressType::Dhcp6,
+                                address: None,
+                                gateway: None,
+                                primary: false,
+                            });
+                        } else if network_type == "ipv6_slaac" {
+                            interface.addresses.push(AddressConfig {
+                                addr_type: AddressType::Slaac,
+                                address: None,
+                                gateway: None,
+                                primary: false,
+                            });
+                        } else if network_type == "ipv4" || network_type == "ipv6" {
+                            let ip_address = network
+                                .get("ip_address")
+                                .and_then(|ip| ip.as_str())
+                                .unwrap_or("");
+
+                            let netmask = network.get("netmask").and_then(|nm| nm.as_str());
+
+                            let prefix_len = if let Some(nm) = netmask {
+                                utils::netmask_to_cidr(nm).unwrap_or(24)
+                            } else {
+                                if network_type == "ipv6" {
+                                    64
+                                } else {
+                                    24
+                                }
+                            };
+
+                            if !ip_address.is_empty() {
+                                interface.addresses.push(AddressConfig {
+                                    addr_type: AddressType::Static,
+                                    address: Some(format!("{}/{}", ip_address, prefix_len)),
+                                    gateway: network
+                                        .get("gateway")
+                                        .and_then(|g| g.as_str())
+                                        .map(|s| s.to_string()),
+                                    primary: interface.addresses.is_empty(),
+                                });
+                            }
+
+                            // Parse routes for this network
+                            if let Some(routes_array) =
+                                network.get("routes").and_then(|r| r.as_array())
+                            {
+                                for route in routes_array {
+                                    if let (Some(dest), Some(gw)) = (
+                                        route.get("network").and_then(|n| n.as_str()),
+                                        route.get("gateway").and_then(|g| g.as_str()),
+                                    ) {
+                                        routes.push(RouteConfig {
+                                            destination: dest.to_string(),
+                                            gateway: gw.to_string(),
+                                            interface: Some(interface_name.clone()),
+                                            metric: route
+                                                .get("metric")
+                                                .and_then(|m| m.as_u64())
+                                                .map(|m| m as u32),
+                                        });
+                                    }
+                                }
+                            }
                         }
 
-                        // Parse routes for this network
-                        if let Some(routes_array) = network.get("routes").and_then(|r| r.as_array())
+                        // Parse DNS
+                        if let Some(dns) = network.get("dns_nameservers").and_then(|d| d.as_array())
                         {
-                            for route in routes_array {
-                                if let (Some(dest), Some(gw)) = (
-                                    route.get("network").and_then(|n| n.as_str()),
-                                    route.get("gateway").and_then(|g| g.as_str()),
-                                ) {
-                                    routes.push(RouteConfig {
-                                        destination: dest.to_string(),
-                                        gateway: gw.to_string(),
-                                        interface: Some(interface_name.clone()),
-                                        metric: route
-                                            .get("metric")
-                                            .and_then(|m| m.as_u64())
-                                            .map(|m| m as u32),
-                                    });
+                            for ns in dns {
+                                if let Some(ns_str) = ns.as_str() {
+                                    if !nameservers.contains(&ns_str.to_string()) {
+                                        nameservers.push(ns_str.to_string());
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    // Parse DNS
-                    if let Some(dns) = network.get("dns_nameservers").and_then(|d| d.as_array()) {
-                        for ns in dns {
-                            if let Some(ns_str) = ns.as_str() {
-                                if !nameservers.contains(&ns_str.to_string()) {
-                                    nameservers.push(ns_str.to_string());
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(search) = network.get("dns_search").and_then(|s| s.as_array()) {
-                        for domain in search {
-                            if let Some(domain_str) = domain.as_str() {
-                                if !search_domains.contains(&domain_str.to_string()) {
-                                    search_domains.push(domain_str.to_string());
+                        if let Some(search) = network.get("dns_search").and_then(|s| s.as_array()) {
+                            for domain in search {
+                                if let Some(domain_str) = domain.as_str() {
+                                    if !search_domains.contains(&domain_str.to_string()) {
+                                        search_domains.push(domain_str.to_string());
+                                    }
                                 }
                             }
                         }

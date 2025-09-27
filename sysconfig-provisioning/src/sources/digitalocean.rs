@@ -101,8 +101,7 @@ impl DigitalOceanSource {
 
         // Check if config drive is available
         let device = utils::find_device_by_label("config-2")
-            .await
-            .or_else(async || utils::find_device_by_label("CONFIG-2").await)
+            .or_else(|| utils::find_device_by_label("CONFIG-2"))
             .context("Config drive not found")?;
 
         // Mount the config drive if not already mounted
@@ -114,17 +113,14 @@ impl DigitalOceanSource {
 
         // Mount as ISO9660 or FAT
         utils::mount_filesystem(&device, &self.config_drive_path, Some("iso9660"))
-            .await
-            .or_else(async |_| {
-                utils::mount_filesystem(&device, &self.config_drive_path, Some("vfat")).await
-            })
+            .or_else(|_| utils::mount_filesystem(&device, &self.config_drive_path, Some("vfat")))
             .context("Failed to mount config drive")?;
 
         // Read the configuration
         let result = self.read_config_drive().await;
 
         // Unmount when done
-        let _ = utils::unmount_filesystem(&self.config_drive_path).await;
+        let _ = utils::unmount_filesystem(&self.config_drive_path);
 
         result
     }
