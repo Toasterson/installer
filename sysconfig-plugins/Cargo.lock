@@ -1950,9 +1950,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sysconfig-config-schema"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "uuid",
+]
+
+[[package]]
 name = "sysconfig-plugins"
 version = "0.1.0"
 dependencies = [
+ "base64 0.21.7",
  "clap",
  "futures",
  "hyper-util",
@@ -1963,6 +1974,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sysconfig",
+ "sysconfig-config-schema",
  "tokio",
  "tokio-stream",
  "tonic",

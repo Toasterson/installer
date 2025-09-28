@@ -1,19 +1,24 @@
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
 use sysconfig_plugins::tasks::files::Files;
 use sysconfig_plugins::tasks::network_settings::NetworkSettings;
-use sysconfig_plugins::TaskHandler;
+use sysconfig_plugins::tasks::packages::Packages;
+use sysconfig_plugins::tasks::users::Users;
+use sysconfig_plugins::{TaskHandler, TaskChange, TaskChangeType};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 // Local proto module generated from ../sysconfig/proto/sysconfig.proto
 mod proto {
     tonic::include_proto!("sysconfig");
 }
+
+use sysconfig_config_schema::UnifiedConfig;
 use proto::plugin_service_server::{PluginService, PluginServiceServer};
 use proto::sys_config_service_client::SysConfigServiceClient;
 
@@ -207,7 +212,7 @@ impl PluginService for IllumosBasePlugin {
             info!("DRY-RUN MODE: Simulating state changes without applying them");
         }
 
-        // Parse desired state and apply network.settings if present
+        // Parse desired state - try unified config first, then fall back to legacy
         let desired: serde_json::Value = match serde_json::from_str(&req.state) {
             Ok(v) => v,
             Err(e) => {
@@ -220,69 +225,148 @@ impl PluginService for IllumosBasePlugin {
         };
 
         let mut task_changes: Vec<sysconfig_plugins::TaskChange> = Vec::new();
-        if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
-            if let Err(e) = NetworkSettings::validate_schema(settings) {
-                return Ok(Response::new(proto::PluginApplyStateResponse {
-                    success: false,
-                    error: format!("invalid network.settings schema: {}", e),
-                    changes: vec![],
-                }));
-            }
 
-            if effective_dry_run {
-                info!("DRY-RUN: Would apply network settings: {}", settings);
-            }
+        // Try to parse as unified config first
+        let unified_config_result = UnifiedConfig::from_json(&req.state);
 
-            match NetworkSettings::default().apply(settings, effective_dry_run) {
-                Ok(mut changes) => {
-                    for change in &changes {
-                        if effective_dry_run {
-                            info!(
-                                "DRY-RUN: Would {} {} - new value: {:?}",
-                                change.change_type.as_str(),
-                                change.path,
-                                change.new_value
-                            );
-                        }
-                    }
-                    task_changes.append(&mut changes);
-                }
-                Err(e) => {
+        if let Ok(unified_config) = unified_config_result {
+            debug!("Processing unified configuration schema");
+
+            // Apply system configuration
+            if let Some(system) = &unified_config.system {
+                if let Err(e) = self.apply_system_config(system, effective_dry_run, &mut task_changes).await {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
-                        error: e,
+                        error: format!("failed to apply system config: {}", e),
                         changes: vec![],
                     }));
                 }
             }
-        }
 
-        // Apply files task if present at top-level: files: [ { ... } ]
-        if let Some(files) = desired.get("files") {
-            if effective_dry_run {
-                info!("DRY-RUN: Would apply file changes: {}", files);
-            }
-
-            match Files::default().apply(files, effective_dry_run) {
-                Ok(mut changes) => {
-                    for change in &changes {
-                        if effective_dry_run {
-                            info!(
-                                "DRY-RUN: Would {} {} - new value: {:?}",
-                                change.change_type.as_str(),
-                                change.path,
-                                change.new_value
-                            );
-                        }
-                    }
-                    task_changes.append(&mut changes);
-                }
-                Err(e) => {
+            // Apply networking configuration
+            if let Some(networking) = &unified_config.networking {
+                if let Err(e) = self.apply_networking_config(networking, effective_dry_run, &mut task_changes).await {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
-                        error: e,
+                        error: format!("failed to apply networking config: {}", e),
                         changes: vec![],
                     }));
+                }
+            }
+
+            // Apply software configuration
+            if let Some(software) = &unified_config.software {
+                if let Err(e) = self.apply_software_config(software, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply software config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+            // Apply user configuration
+            for user in &unified_config.users {
+                if let Err(e) = self.apply_user_config(user, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply user config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+            // Apply script configuration
+            if let Some(scripts) = &unified_config.scripts {
+                if let Err(e) = self.apply_scripts_config(scripts, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply scripts config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+            // Apply storage configuration
+            if let Some(storage) = &unified_config.storage {
+                if let Err(e) = self.apply_storage_config(storage, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply storage config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+        } else {
+            // Fall back to legacy JSON format
+            debug!("Processing legacy JSON configuration format");
+
+            // Legacy network settings handling
+            if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
+                if let Err(e) = NetworkSettings::validate_schema(settings) {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("invalid network.settings schema: {}", e),
+                        changes: vec![],
+                    }));
+                }
+
+                if effective_dry_run {
+                    info!("DRY-RUN: Would apply network settings: {}", settings);
+                }
+
+                match NetworkSettings::default().apply(settings, effective_dry_run) {
+                    Ok(mut changes) => {
+                        for change in &changes {
+                            if effective_dry_run {
+                                info!(
+                                    "DRY-RUN: Would {} {} - new value: {:?}",
+                                    change.change_type.as_str(),
+                                    change.path,
+                                    change.new_value
+                                );
+                            }
+                        }
+                        task_changes.append(&mut changes);
+                    }
+                    Err(e) => {
+                        return Ok(Response::new(proto::PluginApplyStateResponse {
+                            success: false,
+                            error: e,
+                            changes: vec![],
+                        }));
+                    }
+                }
+            }
+
+            // Legacy files handling
+            if let Some(files) = desired.get("files") {
+                if effective_dry_run {
+                    info!("DRY-RUN: Would apply file changes: {}", files);
+                }
+
+                match Files::default().apply(files, effective_dry_run) {
+                    Ok(mut changes) => {
+                        for change in &changes {
+                            if effective_dry_run {
+                                info!(
+                                    "DRY-RUN: Would {} {} - new value: {:?}",
+                                    change.change_type.as_str(),
+                                    change.path,
+                                    change.new_value
+                                );
+                            }
+                        }
+                        task_changes.append(&mut changes);
+                    }
+                    Err(e) => {
+                        return Ok(Response::new(proto::PluginApplyStateResponse {
+                            success: false,
+                            error: e,
+                            changes: vec![],
+                        }));
+                    }
                 }
             }
         }
@@ -317,10 +401,539 @@ impl PluginService for IllumosBasePlugin {
         Ok(Response::new(resp))
     }
 
-    async fn execute_action(
+    async fn apply_system_config(
         &self,
-        request: Request<proto::PluginExecuteActionRequest>,
-    ) -> Result<Response<proto::PluginExecuteActionResponse>, Status> {
+        system: &sysconfig_config_schema::SystemConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying system configuration");
+
+        // Apply hostname
+        if let Some(hostname) = &system.hostname {
+            let hostname_json = serde_json::json!({
+                "hostname": hostname
+            });
+
+            match NetworkSettings::default().apply(&hostname_json, dry_run) {
+                Ok(mut changes) => {
+                    task_changes.append(&mut changes);
+                }
+                Err(e) => return Err(format!("failed to set hostname: {}", e)),
+            }
+        }
+
+        // Apply timezone
+        if let Some(timezone) = &system.timezone {
+            if dry_run {
+                info!("DRY-RUN: Would set timezone to {}", timezone);
+                task_changes.push(TaskChange {
+                    change_type: TaskChangeType::Update,
+                    path: "/etc/timezone".to_string(),
+                    old_value: None,
+                    new_value: Some(serde_json::Value::String(timezone.clone())),
+                    verbose: false,
+                });
+            } else {
+                // On illumos, timezone is set via SMF
+                let output = std::process::Command::new("/usr/sbin/svccfg")
+                    .args(&["-s", "system/timezone", "setprop", "timezone/localtime", "=", timezone])
+                    .output()
+                    .map_err(|e| format!("failed to execute svccfg: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set timezone: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                std::process::Command::new("/usr/sbin/svcadm")
+                    .args(&["refresh", "system/timezone"])
+                    .output()
+                    .map_err(|e| format!("failed to refresh timezone service: {}", e))?;
+
+                task_changes.push(TaskChange {
+                    change_type: TaskChangeType::Update,
+                    path: format!("smf:system/timezone:timezone/localtime"),
+                    old_value: None,
+                    new_value: Some(serde_json::Value::String(timezone.clone())),
+                    verbose: false,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn apply_networking_config(
+        &self,
+        networking: &sysconfig_config_schema::NetworkingConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying networking configuration");
+
+        // Convert unified networking config to legacy format for now
+        let mut network_settings = serde_json::json!({});
+
+        // DNS nameservers
+        if !networking.nameservers.is_empty() {
+            network_settings["nameservers"] = serde_json::Value::Array(
+                networking.nameservers.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        // DNS search domains
+        if !networking.search_domains.is_empty() {
+            network_settings["search_domains"] = serde_json::Value::Array(
+                networking.search_domains.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        // Apply DNS configuration if we have any
+        if !network_settings.as_object().unwrap().is_empty() {
+            match NetworkSettings::default().apply(&network_settings, dry_run) {
+                Ok(mut changes) => {
+                    task_changes.append(&mut changes);
+                }
+                Err(e) => return Err(format!("failed to apply DNS settings: {}", e)),
+            }
+        }
+
+        // TODO: Handle network interfaces, routes, etc.
+        // This would require extending the NetworkSettings task or creating new tasks
+
+        Ok(())
+    }
+
+    async fn apply_software_config(
+        &self,
+        software: &sysconfig_config_schema::SoftwareConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying software configuration");
+
+        // Convert to legacy format for package management
+        let mut packages_json = serde_json::json!({});
+
+        if !software.packages_to_install.is_empty() {
+            packages_json["install"] = serde_json::Value::Array(
+                software.packages_to_install.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        if !software.packages_to_remove.is_empty() {
+            packages_json["remove"] = serde_json::Value::Array(
+                software.packages_to_remove.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        if software.update_on_boot {
+            packages_json["refresh"] = serde_json::Value::Bool(true);
+        }
+
+        if software.upgrade_on_boot {
+            packages_json["update"] = serde_json::Value::Bool(true);
+        }
+
+        // Apply package configuration if we have any
+        if !packages_json.as_object().unwrap().is_empty() {
+            match Packages::default().apply(&packages_json, dry_run) {
+                Ok(mut changes) => {
+                    task_changes.append(&mut changes);
+                }
+                Err(e) => return Err(format!("failed to apply package configuration: {}", e)),
+            }
+        }
+
+        // Handle IPS publishers if configured
+        if let Some(repositories) = &software.repositories {
+            if let Some(ips_config) = &repositories.ips {
+                for publisher in &ips_config.publishers {
+                    if dry_run {
+                        info!("DRY-RUN: Would configure IPS publisher {}", publisher.name);
+                    } else {
+                        // Configure IPS publisher
+                        let mut cmd = std::process::Command::new("/usr/bin/pkg");
+                        cmd.args(&["set-publisher", "-O", &publisher.origin, &publisher.name]);
+
+                        if !publisher.enabled {
+                            cmd.arg("--disable");
+                        }
+
+                        let output = cmd.output()
+                            .map_err(|e| format!("failed to execute pkg command: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to configure publisher {}: {}",
+                                publisher.name,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+                    }
+
+                    task_changes.push(TaskChange {
+                        change_type: TaskChangeType::Update,
+                        path: format!("ips:publisher:{}", publisher.name),
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "origin": publisher.origin,
+                            "enabled": publisher.enabled,
+                            "preferred": publisher.preferred
+                        })),
+                        verbose: false,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn apply_user_config(
+        &self,
+        user: &sysconfig_config_schema::UserConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying user configuration for {}", user.name);
+
+        // Convert to legacy format for user management
+        let mut user_json = serde_json::json!({
+            "name": user.name,
+            "create_home": user.create_home,
+            "system_user": user.system_user
+        });
+
+        if let Some(description) = &user.description {
+            user_json["description"] = serde_json::Value::String(description.clone());
+        }
+
+        if let Some(shell) = &user.shell {
+            user_json["shell"] = serde_json::Value::String(shell.clone());
+        }
+
+        if !user.groups.is_empty() {
+            user_json["groups"] = serde_json::Value::Array(
+                user.groups.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        if let Some(primary_group) = &user.primary_group {
+            user_json["primary_group"] = serde_json::Value::String(primary_group.clone());
+        }
+
+        if let Some(home_directory) = &user.home_directory {
+            user_json["home_directory"] = serde_json::Value::String(home_directory.clone());
+        }
+
+        if let Some(uid) = user.uid {
+            user_json["uid"] = serde_json::Value::Number(uid.into());
+        }
+
+        // Handle SSH keys
+        if !user.authentication.ssh_keys.is_empty() {
+            user_json["ssh_keys"] = serde_json::Value::Array(
+                user.authentication.ssh_keys.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        // Handle password
+        if let Some(password_config) = &user.authentication.password {
+            user_json["password_hash"] = serde_json::Value::String(password_config.hash.clone());
+            user_json["expire_on_first_login"] = serde_json::Value::Bool(password_config.expire_on_first_login);
+        }
+
+        // Handle sudo configuration
+        if let Some(sudo_config) = &user.sudo {
+            match sudo_config {
+                sysconfig_config_schema::SudoConfig::Deny => {
+                    user_json["sudo"] = serde_json::Value::Bool(false);
+                }
+                sysconfig_config_schema::SudoConfig::Unrestricted => {
+                    user_json["sudo"] = serde_json::Value::Bool(true);
+                }
+                sysconfig_config_schema::SudoConfig::Custom(rules) => {
+                    user_json["sudo_rules"] = serde_json::Value::Array(
+                        rules.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                    );
+                }
+            }
+        }
+
+        // Apply user configuration
+        match Users::default().apply(&user_json, dry_run) {
+            Ok(mut changes) => {
+                task_changes.append(&mut changes);
+            }
+            Err(e) => return Err(format!("failed to apply user configuration: {}", e)),
+        }
+
+        Ok(())
+    }
+
+    async fn apply_scripts_config(
+        &self,
+        scripts: &sysconfig_config_schema::ScriptConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying scripts configuration");
+
+        // Handle different script phases
+        for script in &scripts.early_scripts {
+            self.execute_script(script, "early", dry_run, task_changes).await?;
+        }
+
+        for script in &scripts.main_scripts {
+            self.execute_script(script, "main", dry_run, task_changes).await?;
+        }
+
+        for script in &scripts.late_scripts {
+            self.execute_script(script, "late", dry_run, task_changes).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn execute_script(
+        &self,
+        script: &sysconfig_config_schema::Script,
+        phase: &str,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        if dry_run {
+            info!("DRY-RUN: Would execute {} script: {}", phase, script.id);
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("script:{}:{}", phase, script.id),
+                old_value: None,
+                new_value: Some(serde_json::Value::String(script.content.clone())),
+                verbose: false,
+            });
+            return Ok(());
+        }
+
+        // Create temporary script file
+        let temp_dir = "/tmp";
+        let script_path = format!("{}/sysconfig_script_{}.sh", temp_dir, script.id);
+
+        std::fs::write(&script_path, &script.content)
+            .map_err(|e| format!("failed to write script file: {}", e))?;
+
+        // Make executable
+        std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("failed to set script permissions: {}", e))?;
+
+        // Execute script
+        let mut cmd = std::process::Command::new(&script_path);
+
+        if let Some(working_dir) = &script.working_directory {
+            cmd.current_dir(working_dir);
+        }
+
+        for (key, value) in &script.environment {
+            cmd.env(key, value);
+        }
+
+        let output = cmd.output()
+            .map_err(|e| format!("failed to execute script: {}", e))?;
+
+        // Clean up temporary file
+        let _ = std::fs::remove_file(&script_path);
+
+        if !output.status.success() {
+            return Err(format!(
+                "script {} failed with exit code {:?}: {}",
+                script.id,
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // Log output if requested
+        if let Some(output_file) = &script.output_file {
+            if let Err(e) = std::fs::write(output_file, &output.stdout) {
+                warn!("Failed to write script output to {}: {}", output_file, e);
+            }
+        }
+
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Create,
+            path: format!("script:{}:{}", phase, script.id),
+            old_value: None,
+            new_value: Some(serde_json::Value::String(
+                String::from_utf8_lossy(&output.stdout).to_string()
+            )),
+            verbose: true,
+        });
+
+        Ok(())
+    }
+
+    async fn apply_storage_config(
+        &self,
+        storage: &sysconfig_config_schema::StorageConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying storage configuration");
+
+        // Handle ZFS pools
+        for pool in &storage.pools {
+            if let sysconfig_config_schema::StoragePoolType::ZfsPool = pool.pool_type {
+                if dry_run {
+                    info!("DRY-RUN: Would create/configure ZFS pool {}", pool.name);
+                } else {
+                    // Check if pool exists
+                    let pool_exists = std::process::Command::new("/usr/sbin/zpool")
+                        .args(&["list", "-H", &pool.name])
+                        .output()
+                        .map(|output| output.status.success())
+                        .unwrap_or(false);
+
+                    if !pool_exists && !pool.devices.is_empty() {
+                        // Create the pool
+                        let mut cmd = std::process::Command::new("/usr/sbin/zpool");
+                        cmd.args(&["create", &pool.name]);
+                        cmd.args(&pool.devices);
+
+                        let output = cmd.output()
+                            .map_err(|e| format!("failed to execute zpool create: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to create ZFS pool {}: {}",
+                                pool.name,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+                    }
+
+                    // Set pool properties
+                    for (prop, value) in &pool.properties {
+                        let output = std::process::Command::new("/usr/sbin/zpool")
+                            .args(&["set", &format!("{}={}", prop, value), &pool.name])
+                            .output()
+                            .map_err(|e| format!("failed to set pool property: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to set property {}={} on pool {}: {}",
+                                prop, value, pool.name,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+                    }
+                }
+
+                task_changes.push(TaskChange {
+                    change_type: if pool_exists { TaskChangeType::Update } else { TaskChangeType::Create },
+                    path: format!("zpool:{}", pool.name),
+                    old_value: None,
+                    new_value: Some(serde_json::json!({
+                        "devices": pool.devices,
+                        "properties": pool.properties
+                    })),
+                    verbose: false,
+                });
+            }
+        }
+
+        // Handle filesystems
+        for filesystem in &storage.filesystems {
+            if let sysconfig_config_schema::FilesystemType::Zfs = filesystem.fstype {
+                if dry_run {
+                    info!("DRY-RUN: Would create ZFS filesystem {}", filesystem.device);
+                } else {
+                    // Create ZFS dataset
+                    let output = std::process::Command::new("/usr/sbin/zfs")
+                        .args(&["create", &filesystem.device])
+                        .output()
+                        .map_err(|e| format!("failed to create ZFS filesystem: {}", e))?;
+
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        if !stderr.contains("dataset already exists") {
+                            return Err(format!(
+                                "failed to create ZFS filesystem {}: {}",
+                                filesystem.device, stderr
+                            ));
+                        }
+                    }
+                }
+
+                task_changes.push(TaskChange {
+                    change_type: TaskChangeType::Create,
+                    path: format!("zfs:{}", filesystem.device),
+                    old_value: None,
+                    new_value: Some(serde_json::json!({
+                        "fstype": "zfs",
+                        "options": filesystem.options
+                    })),
+                    verbose: false,
+                });
+            }
+        }
+
+        // Handle mounts
+        for mount in &storage.mounts {
+            if dry_run {
+                info!("DRY-RUN: Would mount {} at {}", mount.source, mount.target);
+            } else {
+                // Create mount point if it doesn't exist
+                if let Err(e) = std::fs::create_dir_all(&mount.target) {
+                    return Err(format!("failed to create mount point {}: {}", mount.target, e));
+                }
+
+                // Mount the filesystem
+                let mut cmd = std::process::Command::new("/usr/sbin/mount");
+
+                if let Some(fstype) = &mount.fstype {
+                    cmd.args(&["-F", fstype]);
+                }
+
+                if !mount.options.is_empty() {
+                    cmd.args(&["-o", &mount.options.join(",")]);
+                }
+
+                cmd.args(&[&mount.source, &mount.target]);
+
+                let output = cmd.output()
+                    .map_err(|e| format!("failed to mount filesystem: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to mount {} at {}: {}",
+                        mount.source, mount.target,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("mount:{}:{}", mount.source, mount.target),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "source": mount.source,
+                    "target": mount.target,
+                    "fstype": mount.fstype,
+                    "options": mount.options,
+                    "persistent": mount.persistent
+                })),
+                verbose: false,
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn execute_action(
         let req = request.into_inner();
         let result = format!(
             "illumos-base executed action '{}' with params '{}'",

@@ -21,6 +21,12 @@ use proto::{
     StateChange, WatchStateRequest,
 };
 
+// Import provisioning functions
+use sysconfig_plugins::provisioning::{
+    collect_from_source, convert_to_unified_schema, merge_configurations,
+    parse_data_sources, PrioritizedSource,
+};
+
 /// Get the default socket path based on user permissions
 fn default_socket_path() -> String {
     #[cfg(target_os = "linux")]
@@ -128,6 +134,41 @@ enum Commands {
         #[arg(short, long, conflicts_with = "file")]
         stdin: bool,
     },
+
+    /// Cloud provisioning - collect config from data sources and apply
+    Provision {
+        /// Configuration file path (for local source)
+        #[arg(short, long)]
+        config_file: Option<String>,
+
+        /// Data source priorities (comma-separated list: local,cloud-init,ec2,gcp,azure)
+        #[arg(short, long, default_value = "local,cloud-init,ec2,gcp,azure")]
+        sources: String,
+
+        /// Cloud-init meta-data file path
+        #[arg(long, default_value = "/var/lib/cloud/seed/nocloud-net/meta-data")]
+        cloud_init_meta_data: String,
+
+        /// Cloud-init user-data file path
+        #[arg(long, default_value = "/var/lib/cloud/seed/nocloud-net/user-data")]
+        cloud_init_user_data: String,
+
+        /// Cloud-init network-config file path
+        #[arg(long, default_value = "/var/lib/cloud/seed/nocloud-net/network-config")]
+        cloud_init_network_config: String,
+
+        /// Dry run mode - don't make actual changes
+        #[arg(short = 'd', long)]
+        dry_run: bool,
+
+        /// Run once and exit (don't loop)
+        #[arg(long)]
+        run_once: bool,
+
+        /// Interval between provisioning cycles in seconds
+        #[arg(long, default_value = "300")]
+        interval: u64,
+    },
 }
 
 #[tokio::main]
@@ -176,6 +217,29 @@ async fn main() -> Result<()> {
         Commands::Diff { file, stdin } => {
             let desired_state = read_state_input(file, stdin).await?;
             cmd_diff(&mut client, &desired_state).await?;
+        }
+        Commands::Provision {
+            config_file,
+            sources,
+            cloud_init_meta_data,
+            cloud_init_user_data,
+            cloud_init_network_config,
+            dry_run,
+            run_once,
+            interval,
+        } => {
+            cmd_provision(
+                &mut client,
+                config_file,
+                &sources,
+                &cloud_init_meta_data,
+                &cloud_init_user_data,
+                &cloud_init_network_config,
+                dry_run,
+                run_once,
+                interval,
+            )
+            .await?;
         }
     }
 
@@ -659,4 +723,160 @@ fn apply_jsonpath_set(current_state: &Value, path: &str, new_value: Value) -> Re
     }
 
     Ok(state)
+}
+
+async fn cmd_provision(
+    client: &mut SysConfigServiceClient<Channel>,
+    config_file: Option<String>,
+    sources: &str,
+    cloud_init_meta_data: &str,
+    cloud_init_user_data: &str,
+    cloud_init_network_config: &str,
+    dry_run: bool,
+    run_once: bool,
+    interval: u64,
+) -> Result<()> {
+    use tokio::time::{sleep, Duration};
+
+    println!("{}", "Starting provisioning...".cyan());
+
+    // Parse data sources
+    let sources = parse_data_sources(
+        sources,
+        config_file.as_deref(),
+        cloud_init_meta_data,
+        cloud_init_user_data,
+        cloud_init_network_config,
+    )
+    .map_err(|e| anyhow::anyhow!("Failed to parse data sources: {}", e))?;
+
+    debug!("Configured data sources: {:?}", sources);
+
+    // Main provisioning loop
+    loop {
+        match run_provisioning_cycle(client, &sources, dry_run).await {
+            Ok(_) => {
+                println!("{}", "Provisioning cycle completed successfully".green());
+            }
+            Err(e) => {
+                eprintln!("{}: {}", "Provisioning cycle failed".red(), e);
+            }
+        }
+
+        if run_once {
+            break;
+        }
+
+        // Wait before next cycle
+        println!(
+            "{}",
+            format!("Waiting {} seconds before next cycle...", interval).yellow()
+        );
+        sleep(Duration::from_secs(interval)).await;
+    }
+
+    Ok(())
+}
+
+async fn run_provisioning_cycle(
+    client: &mut SysConfigServiceClient<Channel>,
+    sources: &[PrioritizedSource],
+    dry_run: bool,
+) -> Result<()> {
+
+    println!("{}", "Starting provisioning cycle".blue());
+
+    // Collect configuration from all sources
+    let mut merged_config = serde_json::json!({});
+
+    for source_config in sources {
+        match collect_from_source(&source_config.source).await {
+            Ok(config) => {
+                if !config.is_null() {
+                    println!(
+                        "{}",
+                        format!("Collected configuration from source: {:?}", source_config.source).green()
+                    );
+                    debug!("Raw config from source: {}", serde_json::to_string_pretty(&config)?);
+                    merge_configurations(&mut merged_config, config)
+                        .map_err(|e| anyhow::anyhow!("Failed to merge configurations: {}", e))?;
+                } else {
+                    debug!("No configuration found from source: {:?}", source_config.source);
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    format!("Failed to collect from source {:?}: {}", source_config.source, e).yellow()
+                );
+                continue;
+            }
+        }
+    }
+
+    if merged_config.is_null() || merged_config.as_object().unwrap().is_empty() {
+        println!("{}", "No configuration found from any source, skipping cycle".yellow());
+        return Ok(());
+    }
+
+    debug!("Merged configuration: {}", serde_json::to_string_pretty(&merged_config)?);
+
+    // Convert to unified schema and validate
+    let unified_config = convert_to_unified_schema(merged_config)
+        .map_err(|e| anyhow::anyhow!("Failed to convert to unified schema: {}", e))?;
+
+    debug!("Unified configuration: {:#?}", unified_config);
+
+    // Validate the configuration
+    unified_config.validate()
+        .map_err(|e| anyhow::anyhow!("Configuration validation failed: {}", e))?;
+
+    // Convert to JSON for sysconfig
+    let unified_json = unified_config.to_json()
+        .context("Failed to serialize unified config")?;
+
+    debug!("Unified JSON: {}", unified_json);
+
+    // Apply configuration via sysconfig
+    let request = proto::ApplyStateRequest {
+        state: unified_json,
+        dry_run,
+    };
+
+    let response = client
+        .apply_state(request)
+        .await
+        .context("Failed to apply configuration")?;
+
+    let result = response.into_inner();
+
+    if result.error.is_empty() {
+        println!("{}", "Configuration applied successfully".green());
+
+        if !result.changes.is_empty() {
+            println!("{}", "Changes made:".cyan());
+            for change in result.changes {
+                let change_type = match change.r#type {
+                    0 => "CREATE",
+                    1 => "UPDATE",
+                    2 => "DELETE",
+                    _ => "UNKNOWN",
+                };
+
+                println!(
+                    "  {} {}: {} -> {}",
+                    change_type.bold(),
+                    change.path,
+                    if change.old_value.is_empty() { "none".dimmed().to_string() } else { change.old_value },
+                    if change.new_value.is_empty() { "none".dimmed().to_string() } else { change.new_value }
+                );
+            }
+        } else {
+            println!("{}", "No changes required - system already in desired state".green());
+        }
+    } else {
+        return Err(anyhow::anyhow!("Failed to apply configuration: {}", result.error));
+    }
+
+    Ok(())
 }

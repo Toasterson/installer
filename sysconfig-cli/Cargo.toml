@@ -19,6 +19,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = "0.4"
 libc = "0.2"
+sysconfig-config-schema = { path = "../sysconfig-config-schema" }
+sysconfig-plugins = { path = "../sysconfig-plugins" }
+reqwest = { version = "0.11", features = ["json"] }
+base64 = "0.21"
+serde_yaml = "0.9"
 
 [build-dependencies]
 tonic-build = "0.12"

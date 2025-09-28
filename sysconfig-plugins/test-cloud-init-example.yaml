@@ -1,0 +1,164 @@
+#cloud-config
+
+# Cloud-init configuration example for testing unified provisioning conversion
+
+# Basic system configuration
+hostname: cloudhost
+fqdn: cloudhost.example.com
+timezone: UTC
+locale: en_US.UTF-8
+
+# User configuration
+users:
+  - name: ubuntu
+    gecos: Ubuntu User
+    shell: /bin/bash
+    groups: [sudo, adm, users]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGH... ubuntu@workstation
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN... ubuntu@laptop
+    ssh_import_id:
+      - gh:ubuntu-user
+      - lp:ubuntu-user
+    homedir: /home/ubuntu
+    uid: 1000
+
+  - name: app
+    gecos: Application User
+    shell: /bin/bash
+    groups: [apps]
+    sudo: false
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDApp... app@deploy
+    homedir: /home/app
+    uid: 2000
+
+# Package management
+package_update: true
+package_upgrade: false
+
+packages:
+  - curl
+  - wget
+  - git
+  - vim
+  - htop
+  - tmux
+  - jq
+  - unzip
+
+# APT configuration
+apt:
+  proxy: http://proxy.internal:8080
+  sources:
+    docker:
+      source: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+      keyserver: keyserver.ubuntu.com
+
+# SSH configuration
+ssh_authorized_keys:
+  - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDRoot... root@management
+
+# Network configuration (version 2)
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp6: true
+    eth1:
+      addresses:
+        - 192.168.1.100/24
+        - fd00:test::100/64
+      gateway4: 192.168.1.1
+      nameservers:
+        addresses:
+          - 8.8.8.8
+          - 1.1.1.1
+        search:
+          - example.com
+          - test.local
+
+# Scripts to run
+bootcmd:
+  - echo 'Starting early boot configuration...'
+  - mkdir -p /opt/bootstrap
+
+runcmd:
+  - echo 'Running main configuration scripts...'
+  - |
+    cat > /opt/bootstrap/app.conf << 'EOF'
+    [app]
+    name = cloud-provisioned-app
+    version = 1.0
+    environment = cloud
+    EOF
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo 'Configuration completed at' $(date) > /opt/bootstrap/completed
+
+# Write files
+write_files:
+  - path: /etc/motd
+    content: |
+      Welcome to Cloud-Init Provisioned System
+      ========================================
+
+      This system was provisioned using cloud-init configuration
+      and converted through the unified provisioning system.
+
+      Host: cloudhost.example.com
+      Provisioned: $(date)
+    permissions: '0644'
+
+  - path: /opt/bootstrap/info.json
+    content: |
+      {
+        "provisioned_by": "cloud-init",
+        "converted_by": "unified-provisioning-system",
+        "timestamp": "$(date -Iseconds)",
+        "version": "1.0.0"
+      }
+    permissions: '0644'
+
+  - path: /etc/cron.d/health-check
+    content: |
+      # Health check cron job
+      */5 * * * * root /usr/bin/curl -sf http://localhost:8080/health || logger "Health check failed"
+    permissions: '0644'
+
+# NTP configuration
+ntp:
+  servers:
+    - pool.ntp.org
+    - time.cloudflare.com
+    - time.google.com
+
+# DNS configuration
+manage_resolv_conf: true
+resolv_conf:
+  nameservers:
+    - 9.9.9.9
+    - 149.112.112.112
+    - 1.1.1.1
+  searchdomains:
+    - example.com
+    - cloud.local
+  domain: example.com
+
+# Power state - reboot after configuration
+power_state:
+  mode: reboot
+  delay: 60
+  message: "Rebooting after cloud-init provisioning"
+
+# Final message
+final_message: |
+  Cloud-init provisioning completed successfully!
+  System hostname: $HOSTNAME
+  IP addresses: $(hostname -I)
+  Uptime: $UPTIME
+
+  The system is now ready for service.

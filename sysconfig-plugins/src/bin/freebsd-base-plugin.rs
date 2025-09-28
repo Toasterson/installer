@@ -1,19 +1,24 @@
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use sysconfig_plugins::tasks::files::Files;
+use sysconfig_plugins::tasks::network_settings::NetworkSettings;
+use sysconfig_plugins::tasks::packages::Packages;
+use sysconfig_plugins::tasks::users::Users;
+use sysconfig_plugins::{TaskHandler, TaskChange, TaskChangeType};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
-use tracing::{error, info};
-use sysconfig_plugins::tasks::network_settings::NetworkSettings;
-use sysconfig_plugins::tasks::files::Files;
-use sysconfig_plugins::TaskHandler;
+use tracing::{debug, error, info, warn};
 
 // Local proto module generated from ../sysconfig/proto/sysconfig.proto
 mod proto {
     tonic::include_proto!("sysconfig");
 }
+
+use sysconfig_config_schema::UnifiedConfig;
 use proto::plugin_service_server::{PluginService, PluginServiceServer};
 use proto::sys_config_service_client::SysConfigServiceClient;
 
@@ -43,7 +48,7 @@ fn default_plugin_socket_path() -> String {
 
 #[derive(Default)]
 struct FreeBsdBasePlugin {
-    inner: Arc<RwLock<PluginState>>, 
+    inner: Arc<RwLock<PluginState>>,
 }
 
 #[derive(Default)]
@@ -125,7 +130,7 @@ impl PluginService for FreeBsdBasePlugin {
     ) -> Result<Response<proto::PluginApplyStateResponse>, Status> {
         let req = request.into_inner();
 
-        // Parse desired state and apply network.settings if present
+        // Parse desired state - try unified config first, then fall back to legacy
         let desired: serde_json::Value = match serde_json::from_str(&req.state) {
             Ok(v) => v,
             Err(e) => {
@@ -138,7 +143,55 @@ impl PluginService for FreeBsdBasePlugin {
         };
 
         let mut task_changes: Vec<sysconfig_plugins::TaskChange> = Vec::new();
-        if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
+
+        // Check if we should force dry-run mode
+        let auto_dry_run = false; // FreeBSD doesn't auto-enable dry-run like illumos
+        let effective_dry_run = req.dry_run || auto_dry_run;
+
+        // Try to parse as unified config first
+        let unified_config_result = UnifiedConfig::from_json(&req.state);
+
+        if let Ok(unified_config) = unified_config_result {
+            debug!("Processing unified configuration schema");
+
+            // Apply system configuration
+            if let Some(system) = &unified_config.system {
+                if let Err(e) = self.apply_system_config(system, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply system config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+            // Apply software configuration (especially PKG repositories)
+            if let Some(software) = &unified_config.software {
+                if let Err(e) = self.apply_software_config(software, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply software config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+            // Apply user configuration
+            for user in &unified_config.users {
+                if let Err(e) = self.apply_user_config(user, effective_dry_run, &mut task_changes).await {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply user config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
+        } else {
+            // Fall back to legacy JSON format
+            debug!("Processing legacy JSON configuration format");
+
+            if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
             if let Err(e) = NetworkSettings::validate_schema(settings) {
                 return Ok(Response::new(proto::PluginApplyStateResponse {
                     success: false,
@@ -146,7 +199,7 @@ impl PluginService for FreeBsdBasePlugin {
                     changes: vec![],
                 }));
             }
-            match NetworkSettings::default().apply(settings, req.dry_run) {
+            match NetworkSettings::default().apply(settings, effective_dry_run) {
                 Ok(mut changes) => {
                     task_changes.append(&mut changes);
                 }
@@ -160,18 +213,19 @@ impl PluginService for FreeBsdBasePlugin {
             }
         }
 
-        // Apply files task if present at top-level: files: [ { ... } ]
-        if let Some(files) = desired.get("files") {
-            match Files::default().apply(files, req.dry_run) {
-                Ok(mut changes) => {
-                    task_changes.append(&mut changes);
-                }
-                Err(e) => {
-                    return Ok(Response::new(proto::PluginApplyStateResponse {
-                        success: false,
-                        error: e,
-                        changes: vec![],
-                    }));
+            // Apply files task if present at top-level: files: [ { ... } ]
+            if let Some(files) = desired.get("files") {
+                match Files::default().apply(files, effective_dry_run) {
+                    Ok(mut changes) => {
+                        task_changes.append(&mut changes);
+                    }
+                    Err(e) => {
+                        return Ok(Response::new(proto::PluginApplyStateResponse {
+                            success: false,
+                            error: e,
+                            changes: vec![],
+                        }));
+                    }
                 }
             }
         }
@@ -190,7 +244,196 @@ impl PluginService for FreeBsdBasePlugin {
 
         let resp = proto::PluginApplyStateResponse { success: true, error: String::new(), changes };
         Ok(Response::new(resp))
-}
+    }
+
+    async fn apply_system_config(
+        &self,
+        system: &sysconfig_config_schema::SystemConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying system configuration");
+
+        // Apply hostname
+        if let Some(hostname) = &system.hostname {
+            if dry_run {
+                info!("DRY-RUN: Would set hostname to {}", hostname);
+            } else {
+                // On FreeBSD, set hostname via sysctl
+                let output = std::process::Command::new("/sbin/sysctl")
+                    .args(&["kern.hostname", &format!("kern.hostname={}", hostname)])
+                    .output()
+                    .map_err(|e| format!("failed to execute sysctl: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set hostname: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Update,
+                path: "kern.hostname".to_string(),
+                old_value: None,
+                new_value: Some(serde_json::Value::String(hostname.clone())),
+                verbose: false,
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn apply_software_config(
+        &self,
+        software: &sysconfig_config_schema::SoftwareConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying software configuration");
+
+        // Handle PKG repositories if configured
+        if let Some(repositories) = &software.repositories {
+            if let Some(pkg_config) = &repositories.pkg {
+                // Configure PKG repositories
+                for repo in &pkg_config.repositories {
+                    let repo_conf_path = format!("/usr/local/etc/pkg/repos/{}.conf", repo.name);
+
+                    let repo_content = format!(
+                        "{}: {{\n    url: \"{}\"\n    enabled: {}\n}}\n",
+                        repo.name,
+                        repo.url,
+                        if repo.enabled { "yes" } else { "no" }
+                    );
+
+                    if dry_run {
+                        info!("DRY-RUN: Would configure PKG repository {} at {}", repo.name, repo_conf_path);
+                    } else {
+                        // Create directory if it doesn't exist
+                        if let Some(parent) = std::path::Path::new(&repo_conf_path).parent() {
+                            std::fs::create_dir_all(parent)
+                                .map_err(|e| format!("failed to create repo config directory: {}", e))?;
+                        }
+
+                        // Write repository configuration
+                        std::fs::write(&repo_conf_path, &repo_content)
+                            .map_err(|e| format!("failed to write repo config: {}", e))?;
+                    }
+
+                    task_changes.push(TaskChange {
+                        change_type: TaskChangeType::Update,
+                        path: repo_conf_path,
+                        old_value: None,
+                        new_value: Some(serde_json::Value::String(repo_content)),
+                        verbose: false,
+                    });
+                }
+
+                // Set PKG configuration for proxy if specified
+                if let Some(proxy) = &pkg_config.proxy {
+                    let pkg_conf_path = "/usr/local/etc/pkg.conf";
+                    let proxy_line = format!("PKG_ENV: {{ HTTP_PROXY: \"{}\" }}\n", proxy);
+
+                    if dry_run {
+                        info!("DRY-RUN: Would configure PKG proxy in {}", pkg_conf_path);
+                    } else {
+                        // Read existing config or create new
+                        let existing_content = std::fs::read_to_string(pkg_conf_path).unwrap_or_default();
+                        let new_content = if existing_content.contains("PKG_ENV") {
+                            // Replace existing PKG_ENV line (simplified approach)
+                            existing_content
+                        } else {
+                            format!("{}{}", existing_content, proxy_line)
+                        };
+
+                        std::fs::write(pkg_conf_path, &new_content)
+                            .map_err(|e| format!("failed to write pkg config: {}", e))?;
+                    }
+
+                    task_changes.push(TaskChange {
+                        change_type: TaskChangeType::Update,
+                        path: pkg_conf_path.to_string(),
+                        old_value: None,
+                        new_value: Some(serde_json::Value::String(proxy_line)),
+                        verbose: false,
+                    });
+                }
+            }
+        }
+
+        // Handle package installation/removal
+        if !software.packages_to_install.is_empty() || !software.packages_to_remove.is_empty() {
+            let mut packages_json = serde_json::json!({});
+
+            if !software.packages_to_install.is_empty() {
+                packages_json["install"] = serde_json::Value::Array(
+                    software.packages_to_install.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                );
+            }
+
+            if !software.packages_to_remove.is_empty() {
+                packages_json["remove"] = serde_json::Value::Array(
+                    software.packages_to_remove.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                );
+            }
+
+            match Packages::default().apply(&packages_json, dry_run) {
+                Ok(mut changes) => {
+                    task_changes.append(&mut changes);
+                }
+                Err(e) => return Err(format!("failed to apply package configuration: {}", e)),
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn apply_user_config(
+        &self,
+        user: &sysconfig_config_schema::UserConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying user configuration for {}", user.name);
+
+        // Convert to legacy format for user management
+        let mut user_json = serde_json::json!({
+            "name": user.name,
+            "create_home": user.create_home,
+            "system_user": user.system_user
+        });
+
+        if let Some(description) = &user.description {
+            user_json["description"] = serde_json::Value::String(description.clone());
+        }
+
+        if let Some(shell) = &user.shell {
+            user_json["shell"] = serde_json::Value::String(shell.clone());
+        }
+
+        if !user.groups.is_empty() {
+            user_json["groups"] = serde_json::Value::Array(
+                user.groups.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        if !user.authentication.ssh_keys.is_empty() {
+            user_json["ssh_keys"] = serde_json::Value::Array(
+                user.authentication.ssh_keys.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+            );
+        }
+
+        // Apply user configuration using the Users task handler
+        match Users::default().apply(&user_json, dry_run) {
+            Ok(mut changes) => {
+                task_changes.append(&mut changes);
+            }
+            Err(e) => return Err(format!("failed to apply user configuration: {}", e)),
+        }
+
+        Ok(())
+    }
 
     async fn execute_action(
         &self,

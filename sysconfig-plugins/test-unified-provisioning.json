@@ -1,0 +1,316 @@
+{
+  "system": {
+    "hostname": "unified-test-host",
+    "fqdn": "unified-test-host.example.com",
+    "timezone": "America/New_York",
+    "locale": "en_US.UTF-8",
+    "environment": {
+      "EDITOR": "vi",
+      "PAGER": "less"
+    }
+  },
+  "networking": {
+    "interfaces": [
+      {
+        "name": "net0",
+        "addresses": [
+          {
+            "name": "dhcp4",
+            "kind": "dhcp4"
+          },
+          {
+            "name": "dhcp6",
+            "kind": "dhcp6"
+          }
+        ],
+        "mtu": 1500,
+        "description": "Primary network interface"
+      },
+      {
+        "name": "net1",
+        "mac_address": "52:54:00:12:34:56",
+        "addresses": [
+          {
+            "name": "static_v4",
+            "kind": {
+              "static": "192.168.100.50/24"
+            }
+          }
+        ],
+        "gateway": "192.168.100.1",
+        "mtu": 1500,
+        "description": "Management interface"
+      }
+    ],
+    "nameservers": [
+      "9.9.9.9",
+      "1.1.1.1",
+      "8.8.8.8"
+    ],
+    "search_domains": [
+      "example.com",
+      "test.local"
+    ],
+    "routes": [
+      {
+        "destination": "10.0.0.0/8",
+        "gateway": "192.168.100.1",
+        "interface": "net1",
+        "metric": 100
+      }
+    ],
+    "ntp_servers": [
+      "pool.ntp.org",
+      "time.cloudflare.com"
+    ]
+  },
+  "software": {
+    "update_on_boot": true,
+    "upgrade_on_boot": false,
+    "packages_to_install": [
+      "vim",
+      "tmux",
+      "git",
+      "curl",
+      "wget",
+      "htop"
+    ],
+    "packages_to_remove": [
+      "telnet",
+      "ftp"
+    ],
+    "repositories": {
+      "apt": {
+        "proxy": "http://proxy.example.com:8080",
+        "ppas": [
+          "ppa:deadsnakes/ppa"
+        ],
+        "sources": [
+          {
+            "name": "docker",
+            "uri": "https://download.docker.com/linux/ubuntu",
+            "suites": ["focal"],
+            "components": ["stable"],
+            "key_id": "9DC858229FC7DD38854AE2D88D81803C0EBFCD88",
+            "key_server": "keyserver.ubuntu.com"
+          }
+        ],
+        "preferences": {
+          "docker-ce": 500
+        }
+      },
+      "yum": {
+        "repositories": [
+          {
+            "id": "epel",
+            "name": "Extra Packages for Enterprise Linux",
+            "baseurl": "https://download.fedoraproject.org/pub/epel/8/Everything/x86_64/",
+            "enabled": true,
+            "gpgkey": "https://download.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-8"
+          }
+        ],
+        "gpgcheck": true
+      },
+      "ips": {
+        "publishers": [
+          {
+            "name": "solaris",
+            "origin": "https://pkg.oracle.com/solaris/release/",
+            "enabled": true,
+            "preferred": true
+          },
+          {
+            "name": "extra",
+            "origin": "https://pkg.example.com/extra/",
+            "enabled": true,
+            "preferred": false
+          }
+        ],
+        "signature_verification": true
+      },
+      "pkg": {
+        "repositories": [
+          {
+            "name": "FreeBSD",
+            "url": "pkg+http://pkg.FreeBSD.org/${ABI}/quarterly",
+            "enabled": true,
+            "priority": 100
+          },
+          {
+            "name": "local",
+            "url": "http://pkg.example.com/freebsd/",
+            "enabled": true,
+            "priority": 50
+          }
+        ],
+        "signature_type": "fingerprints"
+      }
+    }
+  },
+  "users": [
+    {
+      "name": "admin",
+      "description": "System Administrator",
+      "shell": "/bin/bash",
+      "groups": ["wheel", "adm", "sys"],
+      "primary_group": "staff",
+      "system_user": false,
+      "home_directory": "/home/admin",
+      "uid": 1000,
+      "create_home": true,
+      "sudo": "unrestricted",
+      "authentication": {
+        "password": {
+          "hash": "$6$rounds=4096$saltsalt$hash...",
+          "expire_on_first_login": true
+        },
+        "ssh_keys": [
+          "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... admin@workstation",
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFoo... admin@laptop"
+        ],
+        "ssh_import_ids": [
+          "gh:admin-github",
+          "lp:admin-launchpad"
+        ]
+      }
+    },
+    {
+      "name": "appuser",
+      "description": "Application Service User",
+      "shell": "/bin/ksh",
+      "groups": ["apps", "users"],
+      "system_user": false,
+      "home_directory": "/home/appuser",
+      "uid": 2000,
+      "create_home": true,
+      "sudo": "deny",
+      "authentication": {
+        "ssh_keys": [
+          "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC9... appuser@deploy"
+        ],
+        "ssh_import_ids": []
+      }
+    },
+    {
+      "name": "svcuser",
+      "description": "Service Account",
+      "shell": "/bin/false",
+      "groups": ["daemon"],
+      "system_user": true,
+      "home_directory": "/var/lib/svcuser",
+      "uid": 999,
+      "create_home": false,
+      "sudo": "deny",
+      "authentication": {
+        "ssh_keys": [],
+        "ssh_import_ids": []
+      }
+    }
+  ],
+  "scripts": {
+    "early_scripts": [
+      {
+        "id": "system_prep",
+        "content": "#!/bin/bash\necho 'Preparing system...'\nmkdir -p /opt/app/{bin,etc,log}\necho 'System preparation complete'",
+        "interpreter": "/bin/bash",
+        "working_directory": "/tmp",
+        "environment": {
+          "STAGE": "early"
+        },
+        "run_once": true,
+        "output_file": "/var/log/system-prep.log",
+        "timeout": 300
+      }
+    ],
+    "main_scripts": [
+      {
+        "id": "app_setup",
+        "content": "#!/bin/bash\necho 'Setting up application...'\ncat > /opt/app/etc/config.yml << EOF\napp:\n  name: unified-provisioning-demo\n  version: 1.0.0\n  environment: production\nEOF\necho 'Application setup complete'",
+        "interpreter": "/bin/bash",
+        "working_directory": "/opt/app",
+        "environment": {
+          "APP_ENV": "production",
+          "CONFIG_DIR": "/opt/app/etc"
+        },
+        "run_once": true,
+        "output_file": "/var/log/app-setup.log",
+        "timeout": 600
+      },
+      {
+        "id": "install_monitoring",
+        "content": "#!/bin/bash\necho 'Installing monitoring agent...'\n# Simulate monitoring agent installation\necho 'agent_id: unified-test-host' > /opt/app/etc/monitoring.conf\necho 'server: monitoring.example.com:443' >> /opt/app/etc/monitoring.conf\necho 'Monitoring agent installed'",
+        "interpreter": "/bin/bash",
+        "run_once": true,
+        "timeout": 300
+      }
+    ],
+    "late_scripts": [
+      {
+        "id": "finalization",
+        "content": "#!/bin/bash\necho 'Finalizing system configuration...'\necho \"$(date): System provisioned successfully\" >> /var/log/provisioning.log\necho 'System ready for service'",
+        "interpreter": "/bin/bash",
+        "run_once": true,
+        "output_file": "/var/log/finalization.log"
+      }
+    ],
+    "always_scripts": []
+  },
+  "storage": {
+    "pools": [
+      {
+        "name": "rpool",
+        "pool_type": "zpool",
+        "devices": ["/dev/disk0", "/dev/disk1"],
+        "properties": {
+          "compression": "lz4",
+          "atime": "off"
+        }
+      }
+    ],
+    "filesystems": [
+      {
+        "device": "rpool/opt",
+        "fstype": "zfs",
+        "options": {
+          "mountpoint": "/opt",
+          "compression": "gzip"
+        },
+        "format": false
+      },
+      {
+        "device": "rpool/var/log",
+        "fstype": "zfs",
+        "options": {
+          "mountpoint": "/var/log",
+          "logbias": "throughput"
+        },
+        "format": false
+      }
+    ],
+    "mounts": [
+      {
+        "source": "tmpfs",
+        "target": "/tmp",
+        "fstype": "tmpfs",
+        "options": ["size=2G", "mode=1777"],
+        "persistent": false
+      }
+    ]
+  },
+  "integrations": {
+    "ansible": {
+      "repository_url": "https://github.com/example/ansible-playbooks.git",
+      "revision": "main",
+      "playbook_path": "site.yml",
+      "extra_vars": {
+        "environment": "production",
+        "datacenter": "us-east-1"
+      }
+    }
+  },
+  "power_state": {
+    "mode": "noop",
+    "delay": 30,
+    "message": "System provisioning complete"
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "sysconfig-config-schema"
+version = "0.1.0"
+edition = "2021"
+description = "Shared configuration schema for unified provisioning system"
+authors = ["Toasty Dev Team"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+uuid = { version = "1.7.0", features = ["v4", "serde"] }
+
+[features]
+default = []
+kdl = ["knuffel"]
+yaml = ["serde_yaml"]
+
+[dependencies.knuffel]
+version = "3"
+optional = true
+
+[dependencies.serde_yaml]
+version = "0.9"
+optional = true
