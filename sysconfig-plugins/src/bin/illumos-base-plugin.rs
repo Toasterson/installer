@@ -190,9 +190,14 @@ impl PluginService for IllumosBasePlugin {
     ) -> Result<Response<proto::PluginApplyStateResponse>, Status> {
         let req = request.into_inner();
 
+        info!("DEBUG: apply_state called with state: {}", req.state);
+        info!("DEBUG: apply_state dry_run flag: {}", req.dry_run);
+
         // Check if we should force dry-run mode
         let auto_dry_run = self.inner.read().await.auto_dry_run;
         let effective_dry_run = req.dry_run || auto_dry_run;
+
+        info!("DEBUG: auto_dry_run: {}, effective_dry_run: {}", auto_dry_run, effective_dry_run);
 
         if auto_dry_run && !req.dry_run {
             info!("Auto-enabling dry-run mode since running as non-root user");

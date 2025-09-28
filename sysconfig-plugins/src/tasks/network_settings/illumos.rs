@@ -14,7 +14,18 @@ pub fn apply_hostname(hostname: &str, dry_run: bool) -> io::Result<bool> {
     // Persisted hostname on illumos is /etc/nodename
     let persist_path = Path::new("/etc/nodename");
     let desired_file = format!("{}\n", hostname);
-    let current_file = fs::read_to_string(persist_path).unwrap_or_default();
+    let current_file = match fs::read_to_string(persist_path) {
+        Ok(content) => content,
+        Err(e) => {
+            if dry_run {
+                info!("DRY-RUN: Could not read {} ({}), assuming empty", persist_path.display(), e);
+                String::new()
+            } else {
+                warn!("Could not read {} ({}), assuming empty", persist_path.display(), e);
+                String::new()
+            }
+        }
+    };
     if current_file != desired_file {
         changed = true;
         if dry_run {
@@ -36,7 +47,18 @@ pub fn apply_hostname(hostname: &str, dry_run: bool) -> io::Result<bool> {
     }
 
     // Runtime hostname via sethostname(2)
-    let current_runtime = get_runtime_hostname().unwrap_or_default();
+    let current_runtime = match get_runtime_hostname() {
+        Ok(hostname) => hostname,
+        Err(e) => {
+            if dry_run {
+                info!("DRY-RUN: Could not get current runtime hostname ({}), assuming empty", e);
+                String::new()
+            } else {
+                warn!("Could not get current runtime hostname ({}), assuming empty", e);
+                String::new()
+            }
+        }
+    };
     if current_runtime != hostname {
         changed = true;
         if dry_run {

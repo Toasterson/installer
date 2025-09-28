@@ -1,0 +1,38 @@
+{
+  "network": {
+    "settings": {
+      "hostname": "test-host",
+      "dns": {
+        "nameservers": ["8.8.8.8", "1.1.1.1"],
+        "search": ["example.com", "local"]
+      }
+    },
+    "links": {
+      "net0": {
+        "addresses": [
+          {
+            "type": "dhcp4",
+            "primary": true
+          }
+        ]
+      },
+      "net1": {
+        "addresses": [
+          {
+            "type": "static",
+            "address": "192.168.1.100",
+            "netmask": "255.255.255.0",
+            "gateway": "192.168.1.1"
+          }
+        ]
+      }
+    }
+  },
+  "files": [
+    {
+      "path": "/tmp/test-file",
+      "content": "This is a test file created by sysconfig",
+      "mode": "0644"
+    }
+  ]
+}

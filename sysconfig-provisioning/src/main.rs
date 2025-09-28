@@ -159,31 +159,61 @@ async fn connect_to_sysconfig(socket_path: &str) -> Result<SysConfigServiceClien
 fn config_to_state(config: &ProvisioningConfig) -> serde_json::Value {
     let mut state = serde_json::Map::new();
 
+    // Create network.settings object for network-related configuration
+    let mut network_settings = serde_json::Map::new();
+    let mut has_network_settings = false;
+
     // Hostname
     if let Some(hostname) = &config.hostname {
-        state.insert("hostname".to_string(), json!(hostname));
+        network_settings.insert("hostname".to_string(), json!(hostname));
+        has_network_settings = true;
     }
 
-    // Nameservers
-    if !config.nameservers.is_empty() {
-        state.insert("nameservers".to_string(), json!(config.nameservers));
+    // DNS settings (nameservers and search domains)
+    if !config.nameservers.is_empty() || !config.search_domains.is_empty() {
+        let mut dns = serde_json::Map::new();
+        if !config.nameservers.is_empty() {
+            dns.insert("nameservers".to_string(), json!(config.nameservers));
+        }
+        if !config.search_domains.is_empty() {
+            dns.insert("search".to_string(), json!(config.search_domains));
+        }
+        network_settings.insert("dns".to_string(), json!(dns));
+        has_network_settings = true;
     }
 
-    // Search domains
-    if !config.search_domains.is_empty() {
-        state.insert("search_domains".to_string(), json!(config.search_domains));
-    }
-
-    // Network interfaces
+    // Network interfaces go under network.links (separate from network.settings)
+    let mut has_network_links = false;
+    let mut network_links = serde_json::Map::new();
     if !config.interfaces.is_empty() {
-        let mut interfaces = serde_json::Map::new();
         for (name, iface) in &config.interfaces {
-            interfaces.insert(
+            network_links.insert(
                 name.clone(),
                 serde_json::to_value(iface).unwrap_or(json!({})),
             );
         }
-        state.insert("interfaces".to_string(), json!(interfaces));
+        has_network_links = true;
+    }
+
+    // Routes could go with network settings or links - putting with links for now
+    if !config.routes.is_empty() {
+        network_links.insert(
+            "routes".to_string(),
+            serde_json::to_value(&config.routes).unwrap_or(json!([])),
+        );
+        has_network_links = true;
+    }
+
+    // Add network configuration to state if any network config exists
+    if has_network_settings || has_network_links {
+        let mut network = serde_json::Map::new();
+        if has_network_settings {
+            network.insert("settings".to_string(), json!(network_settings));
+        }
+        if has_network_links {
+            network.insert("links".to_string(), json!(network_links));
+        }
+        state.insert("network".to_string(), json!(network));
     }
 
     // SSH authorized keys
@@ -199,14 +229,6 @@ fn config_to_state(config: &ProvisioningConfig) -> serde_json::Value {
         state.insert(
             "users".to_string(),
             serde_json::to_value(&config.users).unwrap_or(json!([])),
-        );
-    }
-
-    // Routes
-    if !config.routes.is_empty() {
-        state.insert(
-            "routes".to_string(),
-            serde_json::to_value(&config.routes).unwrap_or(json!([])),
         );
     }
 

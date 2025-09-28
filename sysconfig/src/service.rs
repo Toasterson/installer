@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use tokio::net::UnixListener;
 use tokio::sync::broadcast;
 use tokio_stream::Stream;
+use tracing::{debug, info, error};
 
 use crate::plugin::PluginClient;
 use crate::proto::{self, *};
@@ -208,14 +209,14 @@ impl SysConfigService {
     }
 
     /// Apply a new state to the system
-    pub fn apply_state(
+    pub async fn apply_state(
         &self,
         state_json: &str,
         dry_run: bool,
         plugin_id: &str,
     ) -> Result<Vec<StateChange>> {
         let new_state = crate::SystemState::from_json(state_json)?;
-        let changes = Vec::new();
+        let mut all_changes = Vec::new();
 
         // Check if any of the paths are locked by another plugin
         {
@@ -233,7 +234,46 @@ impl SysConfigService {
             }
         }
 
-        // Apply the state changes
+        // Find plugins that should handle this state change
+        let affected_plugins = {
+            let plugins = self.plugins.lock().unwrap();
+            let mut affected = Vec::new();
+
+            for (_, plugin) in plugins.iter() {
+                // Skip the requesting plugin to avoid circular calls
+                if plugin.id == plugin_id {
+                    continue;
+                }
+
+                // Check if this plugin manages any paths that appear in the new state
+                for managed_path in &plugin.managed_paths {
+                    if new_state.get(managed_path).is_some() {
+                        debug!("Plugin '{}' should handle path '{}'", plugin.name, managed_path);
+                        affected.push(plugin.clone());
+                        break; // Only add the plugin once
+                    }
+                }
+            }
+            affected
+        };
+
+        // Call each affected plugin's apply_state method
+        for plugin in affected_plugins {
+            debug!("Calling apply_state on plugin '{}' at socket '{}'", plugin.name, plugin.socket_path);
+
+            match self.call_plugin_apply_state(&plugin, state_json, dry_run).await {
+                Ok(mut plugin_changes) => {
+                    info!("Plugin '{}' applied {} changes", plugin.name, plugin_changes.len());
+                    all_changes.append(&mut plugin_changes);
+                }
+                Err(e) => {
+                    error!("Failed to call plugin '{}': {}", plugin.name, e);
+                    // Continue with other plugins rather than failing completely
+                }
+            }
+        }
+
+        // Apply the state changes to sysconfig's state store
         if !dry_run {
             // Replace the entire state and persist a timestamped revision to disk
             let serialized = {
@@ -259,7 +299,33 @@ impl SysConfigService {
             self.persist_state_revision(&serialized)?;
         }
 
-        Ok(changes)
+        Ok(all_changes)
+    }
+
+    /// Call a plugin's apply_state method
+    async fn call_plugin_apply_state(
+        &self,
+        plugin: &crate::Plugin,
+        state_json: &str,
+        dry_run: bool,
+    ) -> Result<Vec<StateChange>> {
+        let mut client = crate::plugin::PluginClient::connect(plugin.socket_path.clone()).await?;
+
+        // Initialize the plugin first to set up auto-dry-run and other settings
+        // Use a temporary service socket path since we don't need it for this call
+        client.initialize(&plugin.id, "/dev/null").await.map_err(|e| {
+            crate::Error::Plugin(format!("Failed to initialize plugin '{}': {}", plugin.name, e))
+        })?;
+
+        let changes = client.apply_state(state_json, dry_run).await?;
+
+        Ok(changes.into_iter().map(|c| StateChange {
+            r#type: c.r#type,
+            path: c.path,
+            old_value: c.old_value,
+            new_value: c.new_value,
+            verbose: c.verbose,
+        }).collect())
     }
 
     /// Execute an action
@@ -499,7 +565,7 @@ impl proto::sys_config_service_server::SysConfigService for SysConfigService {
             .to_string();
         let req = request.into_inner();
 
-        match self.apply_state(&req.state, req.dry_run, &plugin_id) {
+        match self.apply_state(&req.state, req.dry_run, &plugin_id).await {
             Ok(changes) => {
                 let proto_changes = changes
                     .into_iter()

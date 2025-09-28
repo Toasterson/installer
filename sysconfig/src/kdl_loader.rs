@@ -156,7 +156,7 @@ impl KdlConfigLoader {
         // Apply the state through the service
         // Convert state to JSON and apply with plugin_id "kdl-loader"
         let state_json = state.to_json()?;
-        service.apply_state(&state_json, false, "kdl-loader")?;
+        service.apply_state(&state_json, false, "kdl-loader").await?;
 
         info!("Successfully applied KDL configuration");
         Ok(())
@@ -325,10 +325,10 @@ pub async fn load_and_apply_kdl<P: AsRef<Path>>(
     loader.validate()?;
 
     if !dry_run {
-        // Apply using the synchronous version since apply_state is not async
+        // Apply using the async version since apply_state is now async
         let state = loader.to_system_state()?;
         let state_json = state.to_json()?;
-        service.apply_state(&state_json, false, "kdl-loader")?;
+        service.apply_state(&state_json, false, "kdl-loader").await?;
     }
 
     Ok(())

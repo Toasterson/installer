@@ -1,0 +1,28 @@
+// Test configuration for sysconfig provisioning CLI
+// This file uses the knus KDL format (no sysconfig wrapper)
+
+// Set the test system hostname
+hostname "test-host-kdl"
+
+// Configure DNS nameservers
+nameserver "8.8.8.8"
+nameserver "1.1.1.1"
+nameserver "9.9.9.9"
+
+// Primary network interface - DHCP
+interface "net0" {
+    address name="v4-dhcp" kind="dhcp4"
+    address name="v6-auto" kind="addrconf"
+}
+
+// Secondary interface - Static IP
+interface "net1" {
+    address name="v4-static" kind="static" "192.168.1.100/24"
+    address name="v6-static" kind="static" "fd00:test::10/64"
+}
+
+// Management interface - Mixed config
+interface "net2" {
+    address name="v4-mgmt" kind="static" "10.0.0.50/24"
+    address name="v6-mgmt" kind="dhcp6"
+}
