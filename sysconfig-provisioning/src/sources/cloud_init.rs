@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, NetworkConfigV1, NetworkConfigV1Item,
-    ProvisioningConfig, RouteConfig, SubnetConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig,
+    ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -49,6 +49,50 @@ impl CloudInitSource {
     /// Set the NoCloud seed directory path
     pub fn set_nocloud_path(&mut self, path: PathBuf) {
         self.nocloud_path = path;
+    }
+
+    /// Check if cloud-init data sources are available
+    pub async fn is_available(&self) -> bool {
+        // Check NoCloud seed directory
+        if self.nocloud_path.exists() {
+            let meta_data = self.nocloud_path.join("meta-data");
+            let user_data = self.nocloud_path.join("user-data");
+            if meta_data.exists() || user_data.exists() {
+                return true;
+            }
+        }
+
+        // Check config drives
+        for path in &self.config_drive_paths {
+            if path.exists() {
+                // Check for cloud-init data
+                let meta_data = path.join("meta-data");
+                let user_data = path.join("user-data");
+                if meta_data.exists() || user_data.exists() {
+                    return true;
+                }
+                // Also check for OpenStack-style layout
+                let openstack_dir = path.join("openstack").join("latest");
+                if openstack_dir.exists() {
+                    return true;
+                }
+            }
+        }
+
+        // Check if metadata service is available
+        // Try common cloud-init metadata endpoints
+        let urls = vec![
+            format!("{}/latest/meta-data/", self.metadata_url),
+            format!("{}/2009-04-04/meta-data/", self.metadata_url),
+        ];
+
+        for url in urls {
+            if utils::check_metadata_service(&url, None, self.timeout_seconds).await {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Load configuration from cloud-init sources

@@ -11,7 +11,7 @@ sysconfig = { path = "../sysconfig" }
 tokio = { version = "1", features = ["full"] }
 tonic = "0.12"
 prost = "0.13"
-tokio-stream = { version = "0.1", features = ["net"] }
+tokio-stream = { version = "0.1.14", features = ["net"] }
 
 # Configuration parsing
 serde = { version = "1", features = ["derive"] }
@@ -54,6 +54,10 @@ procfs = "0.16"
 
 [build-dependencies]
 tonic-build = "0.12"
+
+[lib]
+name = "sysconfig_provisioning"
+path = "src/lib.rs"
 
 [[bin]]
 name = "provisioning-plugin"

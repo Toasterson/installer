@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig, RouteConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -25,6 +25,15 @@ impl GCPSource {
     /// Set the timeout for metadata requests
     pub fn set_timeout(&mut self, seconds: u64) {
         self.timeout_seconds = seconds;
+    }
+
+    /// Check if GCP metadata service is available
+    pub async fn is_available(&self) -> bool {
+        // Check if we can reach the GCP metadata service
+        // GCP requires the Metadata-Flavor header
+        let url = format!("{}/computeMetadata/v1/", self.metadata_url);
+        let headers = vec![("Metadata-Flavor", "Google")];
+        utils::check_metadata_service(&url, Some(headers), self.timeout_seconds).await
     }
 
     /// Load configuration from GCP metadata service

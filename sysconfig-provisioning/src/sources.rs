@@ -25,6 +25,19 @@ pub use local::LocalSource;
 pub use openstack::OpenStackSource;
 pub use smartos::SmartOSSource;
 
+/// Priority levels for configuration sources
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SourcePriority {
+    LocalFile = 1,
+    CloudInit = 10,
+    EC2 = 20,
+    Azure = 21,
+    GCP = 22,
+    DigitalOcean = 23,
+    OpenStack = 24,
+    SmartOS = 30,
+}
+
 /// Manages all configuration sources
 pub struct SourceManager {
     disabled_sources: Vec<String>,
@@ -33,7 +46,15 @@ pub struct SourceManager {
 
 impl SourceManager {
     /// Create a new source manager
-    pub fn new(disabled_sources: Vec<String>) -> Self {
+    pub fn new() -> Self {
+        Self {
+            disabled_sources: Vec::new(),
+            timeout_seconds: 5,
+        }
+    }
+
+    /// Create a new source manager with disabled sources
+    pub fn with_disabled(disabled_sources: Vec<String>) -> Self {
         Self {
             disabled_sources,
             timeout_seconds: 5,
@@ -45,9 +66,206 @@ impl SourceManager {
         self.timeout_seconds = seconds;
     }
 
+    /// Set the timeout for network-based sources
+    pub fn set_network_timeout(&mut self, seconds: u64) {
+        self.timeout_seconds = seconds;
+    }
+
+    /// Disable a specific source
+    pub fn disable_source(&mut self, source: &str) {
+        if !self.disabled_sources.contains(&source.to_string()) {
+            self.disabled_sources.push(source.to_string());
+        }
+    }
+
     /// Check if a source is disabled
     fn is_source_disabled(&self, source_name: &str) -> bool {
         self.disabled_sources.iter().any(|s| s == source_name)
+    }
+
+    /// Check if a source is available (can be reached)
+    pub async fn is_source_available(&self, source_type: &str) -> bool {
+        if self.is_source_disabled(source_type) {
+            return false;
+        }
+
+        match source_type {
+            "ec2" => {
+                let mut source = EC2Source::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "azure" => {
+                let mut source = AzureSource::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "gcp" => {
+                let mut source = GCPSource::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "digitalocean" => {
+                let mut source = DigitalOceanSource::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "openstack" => {
+                let mut source = OpenStackSource::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "smartos" => SmartOSSource::is_available().await,
+            "cloud-init" => {
+                let mut source = CloudInitSource::new();
+                source.set_timeout(self.timeout_seconds);
+                source.is_available().await
+            }
+            "local" => {
+                // Check for common local config files
+                PathBuf::from("/etc/sysconfig.kdl").exists()
+                    || PathBuf::from("/etc/provisioning.json").exists()
+            }
+            _ => false,
+        }
+    }
+
+    /// Detect all available provisioning sources
+    pub async fn detect_available_sources(&self) -> Vec<(String, u32)> {
+        let mut available = Vec::new();
+
+        // Check local sources first (no network required)
+        if PathBuf::from("/etc/sysconfig.kdl").exists() && !self.is_source_disabled("local") {
+            available.push(("local".to_string(), SourcePriority::LocalFile as u32));
+        }
+
+        // Check SmartOS (may not require network)
+        if SmartOSSource::is_available().await && !self.is_source_disabled("smartos") {
+            available.push(("smartos".to_string(), SourcePriority::SmartOS as u32));
+        }
+
+        // Check cloud-init
+        if !self.is_source_disabled("cloud-init") {
+            let mut source = CloudInitSource::new();
+            source.set_timeout(self.timeout_seconds);
+            if source.is_available().await {
+                available.push(("cloud-init".to_string(), SourcePriority::CloudInit as u32));
+            }
+        }
+
+        // Check cloud vendors (require network)
+        let cloud_sources = vec![
+            ("ec2", SourcePriority::EC2),
+            ("azure", SourcePriority::Azure),
+            ("gcp", SourcePriority::GCP),
+            ("digitalocean", SourcePriority::DigitalOcean),
+            ("openstack", SourcePriority::OpenStack),
+        ];
+
+        for (name, priority) in cloud_sources {
+            if self.is_source_available(name).await {
+                available.push((name.to_string(), priority as u32));
+            }
+        }
+
+        available
+    }
+
+    /// Load configuration from a specific source
+    pub async fn load_from_source(
+        &self,
+        source_name: &str,
+    ) -> Result<Option<(ProvisioningConfig, u32)>> {
+        if self.is_source_disabled(source_name) {
+            debug!("Source {} is disabled", source_name);
+            return Ok(None);
+        }
+
+        match source_name {
+            "local" => {
+                // Try common local paths
+                let paths = vec![
+                    PathBuf::from("/etc/sysconfig.kdl"),
+                    PathBuf::from("/etc/provisioning.json"),
+                    PathBuf::from("/etc/provisioning.yaml"),
+                    PathBuf::from("/etc/sysconfig.json"),
+                ];
+
+                for path in paths {
+                    if path.exists() {
+                        let source = LocalSource::new();
+                        match source.load_any(&path).await {
+                            Ok(config) => {
+                                return Ok(Some((config, SourcePriority::LocalFile as u32)))
+                            }
+                            Err(e) => {
+                                warn!("Failed to load local config from {:?}: {}", path, e);
+                            }
+                        }
+                    }
+                }
+                Ok(None)
+            }
+            "ec2" => {
+                let mut source = EC2Source::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::EC2 as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "azure" => {
+                let mut source = AzureSource::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::Azure as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "gcp" => {
+                let mut source = GCPSource::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::GCP as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "digitalocean" => {
+                let mut source = DigitalOceanSource::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::DigitalOcean as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "openstack" => {
+                let mut source = OpenStackSource::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::OpenStack as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "smartos" => {
+                let source = SmartOSSource::new();
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::SmartOS as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            "cloud-init" => {
+                let mut source = CloudInitSource::new();
+                source.set_timeout(self.timeout_seconds);
+                match source.load().await {
+                    Ok(config) => Ok(Some((config, SourcePriority::CloudInit as u32))),
+                    Err(_) => Ok(None),
+                }
+            }
+            _ => {
+                warn!("Unknown source type: {}", source_name);
+                Ok(None)
+            }
+        }
     }
 
     /// Load configuration from local KDL file
@@ -357,14 +575,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_source_manager_creation() {
-        let manager = SourceManager::new(vec!["ec2".to_string()]);
+        let manager = SourceManager::with_disabled(vec!["ec2".to_string()]);
         assert!(manager.is_source_disabled("ec2"));
         assert!(!manager.is_source_disabled("azure"));
     }
 
     #[tokio::test]
     async fn test_disabled_source() {
-        let manager = SourceManager::new(vec!["local".to_string()]);
+        let manager = SourceManager::with_disabled(vec!["local".to_string()]);
         let result = manager
             .load_local_kdl(&PathBuf::from("/etc/sysconfig.kdl"))
             .await;

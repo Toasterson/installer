@@ -1,0 +1,228 @@
+#!/bin/sh
+#
+# PROVIDE: sysconfig_provision
+# REQUIRE: sysconfig FILESYSTEMS
+# BEFORE: NETWORKING netif
+# KEYWORD: firstboot
+#
+# sysconfig_provision - System Configuration Provisioning
+#
+# This service runs once at boot to provision system configuration
+# from local files, cloud metadata, and other sources.
+#
+# Add the following lines to /etc/rc.conf to enable provisioning:
+#
+# sysconfig_provision_enable="YES"
+# sysconfig_provision_config="/usr/local/etc/sysconfig.kdl"
+# sysconfig_provision_check_network="YES"
+# sysconfig_provision_network_timeout="30"
+# sysconfig_provision_sources="local,cloud-init,ec2,azure,gcp"
+# sysconfig_provision_disable_sources=""
+# sysconfig_provision_log_level="info,provisioning=debug"
+# sysconfig_provision_force="NO"
+
+. /etc/rc.subr
+
+name="sysconfig_provision"
+rcvar="sysconfig_provision_enable"
+
+# Set defaults
+: ${sysconfig_provision_enable:="NO"}
+: ${sysconfig_provision_config:="/usr/local/etc/sysconfig.kdl"}
+: ${sysconfig_provision_check_network:="YES"}
+: ${sysconfig_provision_network_timeout:="30"}
+: ${sysconfig_provision_sources:=""}
+: ${sysconfig_provision_disable_sources:=""}
+: ${sysconfig_provision_log_level:="info"}
+: ${sysconfig_provision_force:="NO"}
+: ${sysconfig_provision_service_socket:="/var/run/sysconfig.sock"}
+
+# Path to the binary
+command="/usr/local/lib/sysconfig/sysconfig-provision"
+
+# This is a one-shot service, not a daemon
+start_cmd="sysconfig_provision_start"
+stop_cmd=":"
+status_cmd="sysconfig_provision_status"
+extra_commands="status apply detect"
+apply_cmd="sysconfig_provision_apply"
+detect_cmd="sysconfig_provision_detect"
+
+# Export environment variables
+export RUST_LOG="${sysconfig_provision_log_level}"
+export SYSCONFIG_SOCKET="${sysconfig_provision_service_socket}"
+
+# Check if this is the first boot (optional marker file)
+firstboot_marker="/var/db/.sysconfig_provisioned"
+
+sysconfig_provision_start()
+{
+    # Check if already provisioned (unless force is set)
+    if [ -f "${firstboot_marker}" ] && ! checkyesno sysconfig_provision_force; then
+        echo "${name}: System already provisioned (${firstboot_marker} exists)."
+        echo "${name}: Use 'sysconfig_provision_force=\"YES\"' to force re-provisioning."
+        return 0
+    fi
+
+    # Check if sysconfig is running
+    if ! service sysconfig status >/dev/null 2>&1; then
+        err 1 "${name}: sysconfig service is not running"
+    fi
+
+    # Wait for sysconfig socket to be available
+    local count=0
+    while [ ${count} -lt 10 ]; do
+        if [ -S "${sysconfig_provision_service_socket}" ]; then
+            break
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if [ ! -S "${sysconfig_provision_service_socket}" ]; then
+        err 1 "${name}: sysconfig socket not available at ${sysconfig_provision_service_socket}"
+    fi
+
+    echo "Starting ${name} provisioning..."
+
+    # Build command arguments
+    local cmd_args="autodetect"
+
+    if checkyesno sysconfig_provision_check_network; then
+        cmd_args="${cmd_args} --check-network"
+    fi
+
+    if [ -n "${sysconfig_provision_network_timeout}" ]; then
+        cmd_args="${cmd_args} --network-timeout ${sysconfig_provision_network_timeout}"
+    fi
+
+    # Execute provisioning
+    echo "${name}: Running: ${command} ${cmd_args}"
+
+    if ${command} ${cmd_args}; then
+        echo "${name}: Provisioning completed successfully."
+
+        # Create marker file to indicate successful provisioning
+        touch "${firstboot_marker}"
+
+        # Optionally trigger network service restart if config changed
+        if service netif enabled 2>/dev/null; then
+            echo "${name}: Restarting network services to apply configuration..."
+            service netif restart || true
+            service routing restart || true
+        fi
+
+        return 0
+    else
+        warn "${name}: Provisioning failed or partially completed."
+        return 1
+    fi
+}
+
+sysconfig_provision_status()
+{
+    if [ -f "${firstboot_marker}" ]; then
+        echo "${name}: System has been provisioned (marker: ${firstboot_marker})"
+
+        # Show current configuration status
+        if [ -S "${sysconfig_provision_service_socket}" ]; then
+            echo ""
+            echo "Current provisioning status:"
+            ${command} status --format pretty 2>/dev/null || true
+        fi
+    else
+        echo "${name}: System has not been provisioned yet"
+    fi
+
+    return 0
+}
+
+sysconfig_provision_apply()
+{
+    echo "${name}: Manually applying provisioning configuration..."
+
+    local cmd_args="apply"
+
+    # Check for config file
+    if [ -f "${sysconfig_provision_config}" ]; then
+        cmd_args="${cmd_args} --config ${sysconfig_provision_config}"
+    fi
+
+    # Add sources if specified
+    if [ -n "${sysconfig_provision_sources}" ]; then
+        cmd_args="${cmd_args} --sources ${sysconfig_provision_sources}"
+    fi
+
+    # Add disabled sources if specified
+    if [ -n "${sysconfig_provision_disable_sources}" ]; then
+        cmd_args="${cmd_args} --disable-sources ${sysconfig_provision_disable_sources}"
+    fi
+
+    # Add force flag if set
+    if checkyesno sysconfig_provision_force; then
+        cmd_args="${cmd_args} --force"
+    fi
+
+    echo "${name}: Running: ${command} ${cmd_args}"
+
+    if ${command} ${cmd_args}; then
+        echo "${name}: Manual provisioning completed successfully."
+        touch "${firstboot_marker}"
+        return 0
+    else
+        warn "${name}: Manual provisioning failed."
+        return 1
+    fi
+}
+
+sysconfig_provision_detect()
+{
+    echo "${name}: Detecting available provisioning sources..."
+
+    local cmd_args="detect"
+
+    # Check network sources if network is available
+    if ping -c 1 -t 1 8.8.8.8 >/dev/null 2>&1; then
+        echo "${name}: Network available, checking cloud sources..."
+        cmd_args="${cmd_args} --network"
+    else
+        echo "${name}: No network, checking local sources only..."
+    fi
+
+    ${command} ${cmd_args} --format pretty
+
+    return 0
+}
+
+# Helper function to parse KDL config
+sysconfig_provision_parse()
+{
+    if [ -f "${sysconfig_provision_config}" ]; then
+        echo "${name}: Parsing configuration file: ${sysconfig_provision_config}"
+        ${command} parse --config ${sysconfig_provision_config} --format pretty
+    else
+        echo "${name}: Configuration file not found: ${sysconfig_provision_config}"
+        return 1
+    fi
+}
+
+# Add parse as an extra command if needed
+if [ "$1" = "parse" ]; then
+    sysconfig_provision_parse
+    exit $?
+fi
+
+load_rc_config ${name}
+
+# Special handling for onestart/onestop since this is not a daemon
+case "$1" in
+    onestart|faststart|forcestart)
+        sysconfig_provision_start
+        ;;
+    onestop|faststop|forcestop)
+        echo "${name} is a one-shot service, nothing to stop."
+        ;;
+    *)
+        run_rc_command "$1"
+        ;;
+esac

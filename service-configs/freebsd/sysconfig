@@ -1,0 +1,167 @@
+#!/bin/sh
+#
+# PROVIDE: sysconfig
+# REQUIRE: FILESYSTEMS
+# BEFORE: NETWORKING
+# KEYWORD: shutdown
+
+# sysconfig - System Configuration Service
+#
+# Add the following lines to /etc/rc.conf to enable sysconfig:
+#
+# sysconfig_enable="YES"
+# sysconfig_socket="/var/run/sysconfig.sock"
+# sysconfig_state_dir="/var/db/sysconfig"
+# sysconfig_config_dir="/usr/local/etc/sysconfig.d"
+# sysconfig_log_level="info,sysconfig=debug"
+
+. /etc/rc.subr
+
+name="sysconfig"
+rcvar="sysconfig_enable"
+
+# Set defaults
+: ${sysconfig_enable:="NO"}
+: ${sysconfig_socket:="/var/run/sysconfig.sock"}
+: ${sysconfig_state_dir:="/var/db/sysconfig"}
+: ${sysconfig_config_dir:="/usr/local/etc/sysconfig.d"}
+: ${sysconfig_log_level:="info"}
+: ${sysconfig_user:="root"}
+: ${sysconfig_group:="wheel"}
+
+# Path to the binary
+command="/usr/local/lib/sysconfig/sysconfig"
+command_args="--socket ${sysconfig_socket}"
+pidfile="/var/run/${name}.pid"
+
+# Required files/dirs
+required_files=""
+required_dirs="${sysconfig_state_dir} ${sysconfig_config_dir}"
+
+# Export environment variables
+export RUST_LOG="${sysconfig_log_level}"
+
+# Extra commands
+extra_commands="reload status"
+
+start_precmd="sysconfig_prestart"
+start_cmd="sysconfig_start"
+stop_cmd="sysconfig_stop"
+reload_cmd="sysconfig_reload"
+status_cmd="sysconfig_status"
+
+sysconfig_prestart()
+{
+    # Create required directories if they don't exist
+    for dir in ${required_dirs}; do
+        if [ ! -d "${dir}" ]; then
+            install -d -o ${sysconfig_user} -g ${sysconfig_group} -m 0755 "${dir}"
+        fi
+    done
+
+    # Clean up old socket if it exists
+    if [ -S "${sysconfig_socket}" ]; then
+        rm -f "${sysconfig_socket}"
+    fi
+
+    # Ensure runtime directory exists
+    socket_dir=$(dirname "${sysconfig_socket}")
+    if [ ! -d "${socket_dir}" ]; then
+        install -d -o ${sysconfig_user} -g ${sysconfig_group} -m 0755 "${socket_dir}"
+    fi
+
+    return 0
+}
+
+sysconfig_start()
+{
+    check_startmsgs && echo "Starting ${name}."
+
+    # Start the daemon in the background
+    /usr/sbin/daemon -c -f -p ${pidfile} -u ${sysconfig_user} \
+        ${command} ${command_args} > /var/log/${name}.log 2>&1
+
+    # Wait for socket to appear
+    local count=0
+    while [ ${count} -lt 10 ]; do
+        if [ -S "${sysconfig_socket}" ]; then
+            chmod 0666 "${sysconfig_socket}"
+            check_startmsgs && echo "${name} started successfully."
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    warn "${name} failed to create socket"
+    return 1
+}
+
+sysconfig_stop()
+{
+    check_startmsgs && echo "Stopping ${name}."
+
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        kill -TERM ${pid} 2>/dev/null
+
+        # Wait for process to terminate
+        local count=0
+        while [ ${count} -lt 10 ]; do
+            if ! kill -0 ${pid} 2>/dev/null; then
+                rm -f ${pidfile}
+                rm -f ${sysconfig_socket}
+                check_startmsgs && echo "${name} stopped."
+                return 0
+            fi
+            sleep 1
+            count=$((count + 1))
+        done
+
+        # Force kill if still running
+        kill -KILL ${pid} 2>/dev/null
+        rm -f ${pidfile}
+        rm -f ${sysconfig_socket}
+    else
+        warn "${name} is not running?"
+    fi
+
+    return 0
+}
+
+sysconfig_reload()
+{
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        check_startmsgs && echo "Reloading ${name} configuration."
+        kill -HUP ${pid}
+    else
+        warn "${name} is not running?"
+        return 1
+    fi
+}
+
+sysconfig_status()
+{
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        if kill -0 ${pid} 2>/dev/null; then
+            echo "${name} is running as pid ${pid}."
+            if [ -S ${sysconfig_socket} ]; then
+                echo "Socket: ${sysconfig_socket} (active)"
+            else
+                echo "Socket: ${sysconfig_socket} (missing!)"
+            fi
+            return 0
+        else
+            echo "${name} is not running (stale pidfile)."
+            return 1
+        fi
+    else
+        echo "${name} is not running."
+        return 1
+    fi
+}
+
+load_rc_config ${name}
+run_rc_command "$1"

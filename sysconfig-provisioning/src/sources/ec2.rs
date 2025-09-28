@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig, RouteConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -25,6 +25,14 @@ impl EC2Source {
     /// Set the timeout for metadata requests
     pub fn set_timeout(&mut self, seconds: u64) {
         self.timeout_seconds = seconds;
+    }
+
+    /// Check if EC2 metadata service is available
+    pub async fn is_available(&self) -> bool {
+        // Check if we can reach the EC2 metadata service
+        // Try to access a simple endpoint
+        let url = format!("{}/latest/meta-data/", self.metadata_url);
+        utils::check_metadata_service(&url, None, self.timeout_seconds).await
     }
 
     /// Load configuration from EC2 metadata service

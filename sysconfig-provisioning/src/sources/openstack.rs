@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, NetworkConfigV1, NetworkConfigV1Item,
-    ProvisioningConfig, RouteConfig, SubnetConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig,
+    ProvisioningConfig, RouteConfig,
 };
 use crate::sources::utils;
 
@@ -34,6 +34,26 @@ impl OpenStackSource {
     /// Set the config drive mount path
     pub fn set_config_drive_path(&mut self, path: PathBuf) {
         self.config_drive_path = path;
+    }
+
+    /// Check if OpenStack metadata service or config drive is available
+    pub async fn is_available(&self) -> bool {
+        // Check if we can reach the OpenStack metadata service
+        let url = format!("{}/openstack/latest/", self.metadata_url);
+        if utils::check_metadata_service(&url, None, self.timeout_seconds).await {
+            return true;
+        }
+
+        // Check if config drive is available
+        if self.config_drive_path.exists() {
+            // Check for expected OpenStack metadata directory
+            let openstack_dir = self.config_drive_path.join("openstack").join("latest");
+            if openstack_dir.exists() {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Load configuration from OpenStack metadata

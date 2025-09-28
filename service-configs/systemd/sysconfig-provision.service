@@ -1,0 +1,99 @@
+[Unit]
+Description=System Configuration Provisioning
+Documentation=man:sysconfig-provision(1)
+After=sysconfig.service
+Requires=sysconfig.service
+After=local-fs.target
+Before=network.target
+Before=cloud-init-local.service
+
+# We want to provision before the network is fully configured
+# but after basic network infrastructure is available
+After=network-pre.target
+Before=network-online.target
+
+# If NetworkManager is used, we want to run before it
+Before=NetworkManager.service
+
+# If systemd-networkd is used, we want to run before it fully configures
+Before=systemd-networkd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+Group=root
+
+# Environment
+Environment="RUST_LOG=info,provisioning=debug"
+Environment="SYSCONFIG_SOCKET=/run/sysconfig.sock"
+
+# Network timeout for cloud metadata services
+Environment="PROVISIONING_NETWORK_TIMEOUT=30"
+
+# Main provisioning command
+ExecStart=/usr/lib/sysconfig/sysconfig-provision autodetect --check-network
+
+# Optional: Manual re-provisioning command
+ExecReload=/usr/lib/sysconfig/sysconfig-provision autodetect --check-network --force
+
+# Create necessary directories
+ExecStartPre=/bin/mkdir -p /var/lib/sysconfig/provisioning
+ExecStartPre=/bin/mkdir -p /etc/sysconfig.d
+
+# Security hardening (less restrictive due to network needs)
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+NoNewPrivileges=yes
+
+# Allow writing to configuration paths
+ReadWritePaths=/etc/hostname /etc/hosts /etc/resolv.conf
+ReadWritePaths=/etc/sysconfig.kdl /etc/sysconfig.d
+ReadWritePaths=/var/lib/sysconfig
+ReadWritePaths=/run/sysconfig
+ReadWritePaths=/sys/class/net
+ReadWritePaths=/proc/sys/net
+
+# Network configuration paths for different distros
+ReadWritePaths=/etc/systemd/network /run/systemd/network
+ReadWritePaths=/etc/NetworkManager /run/NetworkManager
+ReadWritePaths=/etc/netplan /run/netplan
+ReadWritePaths=/etc/sysconfig/network-scripts
+ReadWritePaths=/etc/network
+
+# Cloud-init paths if present
+ReadWritePaths=/var/lib/cloud
+ReadWritePaths=/etc/cloud
+
+# Allow network access for metadata services
+PrivateNetwork=no
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+# Capabilities for network detection and minimal config
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_DAC_OVERRIDE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+
+# Resource limits
+TimeoutStartSec=120s
+LimitNOFILE=65536
+TasksMax=256
+
+# Restart policy - don't restart on failure as this is boot provisioning
+Restart=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sysconfig-provision
+
+[Install]
+# This runs during normal boot
+WantedBy=multi-user.target
+
+# Also can be triggered by cloud-init if needed
+WantedBy=cloud-init.target

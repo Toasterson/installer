@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='sysconfig-illumos-base'>
+  <service name='system/sysconfig/illumos-base' type='service' version='1'>
+
+    <create_default_instance enabled='true' />
+
+    <!-- Dependencies -->
+    <dependency name='sysconfig' type='service' grouping='require_all' restart_on='error'>
+      <service_fmri value='svc:/system/sysconfig:default' />
+    </dependency>
+
+    <dependency name='filesystem' type='service' grouping='require_all' restart_on='none'>
+      <service_fmri value='svc:/system/filesystem/local:default' />
+    </dependency>
+
+    <dependency name='network-loopback' type='service' grouping='require_all' restart_on='none'>
+      <service_fmri value='svc:/network/loopback:default' />
+    </dependency>
+
+    <!-- Optional dependency on network configuration service -->
+    <dependency name='network-physical' type='service' grouping='optional_all' restart_on='none'>
+      <service_fmri value='svc:/network/physical:default' />
+    </dependency>
+
+    <!-- Method context -->
+    <method_context>
+      <method_credential user='root' group='root' privileges='basic,sys_ip_config,net_privaddr,proc_owner,file_dac_write' />
+      <method_environment>
+        <envvar name='RUST_LOG' value='info,illumos_base_plugin=debug' />
+      </method_environment>
+    </method_context>
+
+    <!-- Start method -->
+    <exec_method
+      type='method'
+      name='start'
+      exec='/usr/lib/sysconfig/plugins/illumos-base-plugin --socket /var/run/sysconfig-illumos-base.sock --service-socket /var/run/sysconfig.sock'
+      timeout_seconds='60'>
+      <method_context>
+        <method_credential user='root' group='root' />
+      </method_context>
+    </exec_method>
+
+    <!-- Stop method -->
+    <exec_method
+      type='method'
+      name='stop'
+      exec=':kill'
+      timeout_seconds='60'>
+      <method_context>
+        <method_credential user='root' group='root' />
+      </method_context>
+    </exec_method>
+
+    <!-- Refresh method - reload configuration -->
+    <exec_method
+      type='method'
+      name='refresh'
+      exec=':kill -HUP'
+      timeout_seconds='60'>
+      <method_context>
+        <method_credential user='root' group='root' />
+      </method_context>
+    </exec_method>
+
+    <!-- Properties -->
+    <property_group name='startd' type='framework'>
+      <propval name='duration' type='astring' value='contract' />
+      <propval name='ignore_error' type='astring' value='core,signal' />
+    </property_group>
+
+    <property_group name='config' type='application'>
+      <propval name='socket_path' type='astring' value='/var/run/sysconfig-illumos-base.sock' />
+      <propval name='service_socket' type='astring' value='/var/run/sysconfig.sock' />
+      <propval name='dry_run' type='boolean' value='false' />
+      <propval name='managed_paths' type='astring'>
+        <value_node value='hostname' />
+        <value_node value='nameservers' />
+        <value_node value='search_domains' />
+        <value_node value='interfaces' />
+        <value_node value='routes' />
+      </propval>
+    </property_group>
+
+    <!-- Service properties -->
+    <stability value='Unstable' />
+
+    <template>
+      <common_name>
+        <loctext xml:lang='C'>illumos Base Configuration Plugin</loctext>
+      </common_name>
+      <description>
+        <loctext xml:lang='C'>
+          Platform-specific configuration plugin for illumos systems. Handles hostname,
+          network interfaces, DNS configuration, and other illumos-specific settings.
+        </loctext>
+      </description>
+      <documentation>
+        <manpage title='illumos-base-plugin' section='1M' />
+      </documentation>
+    </template>
+
+  </service>
+</service_bundle>

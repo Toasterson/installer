@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig, RouteConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -32,6 +32,18 @@ impl AzureSource {
     /// Set the API version
     pub fn set_api_version(&mut self, version: String) {
         self.api_version = version;
+    }
+
+    /// Check if Azure metadata service is available
+    pub async fn is_available(&self) -> bool {
+        // Check if we can reach the Azure metadata service
+        // Azure requires the Metadata header
+        let url = format!(
+            "{}/metadata/instance?api-version={}",
+            self.metadata_url, self.api_version
+        );
+        let headers = vec![("Metadata", "true")];
+        utils::check_metadata_service(&url, Some(headers), self.timeout_seconds).await
     }
 
     /// Load configuration from Azure metadata service

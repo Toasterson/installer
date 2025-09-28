@@ -149,14 +149,7 @@ pub fn parse_ip_cidr(address: &str) -> Result<(String, Option<u8>)> {
 
 /// Normalize a MAC address to lowercase with colons
 pub fn normalize_mac_address(mac: &str) -> String {
-    mac.to_lowercase()
-        .replace('-', ":")
-        .chars()
-        .collect::<Vec<_>>()
-        .chunks(2)
-        .map(|chunk| chunk.iter().collect::<String>())
-        .collect::<Vec<_>>()
-        .join(":")
+    mac.to_lowercase().replace('-', ":")
 }
 
 /// Check if a path is a block device

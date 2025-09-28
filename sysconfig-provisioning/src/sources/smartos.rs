@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::process::Command;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig, RouteConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -40,6 +40,17 @@ impl SmartOSSource {
     /// Set the timeout for operations
     pub fn set_timeout(&mut self, seconds: u64) {
         self.timeout_seconds = seconds;
+    }
+
+    /// Check if SmartOS metadata is available
+    pub async fn is_available() -> bool {
+        // Check if mdata-get command exists
+        // SmartOS metadata is only available on SmartOS zones
+        std::process::Command::new("mdata-get")
+            .arg("-l")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     }
 
     /// Load configuration from SmartOS metadata

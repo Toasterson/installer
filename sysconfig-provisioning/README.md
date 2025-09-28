@@ -1,272 +1,324 @@
-# SysConfig Provisioning System
+# Sysconfig Provisioning CLI
+
+A command-line tool for system provisioning that parses configuration from multiple sources and writes it to sysconfig. This tool replaces the previous plugin-server architecture with a simpler CLI approach that can be used during boot or manually.
 
 ## Overview
 
-The SysConfig Provisioning System is a comprehensive metadata aggregation solution that reads system configuration from multiple sources during boot and runtime. It supports local configuration files, cloud-init datasources, and various cloud vendor metadata services.
-
-## Current Implementation Status
-
-### ✅ Implemented
-
-#### Core Infrastructure
-- **SysConfig Service**: gRPC-based configuration management service with plugin architecture
-- **Plugin System**: Support for platform-specific plugins (illumos, Linux, FreeBSD, Windows)
-- **State Management**: JSON-based state storage with persistence and revision tracking
-- **KDL Parser**: Configuration parsing using the KDL (KDL Document Language) format
-
-#### Configuration Sources
-1. **Local KDL File** (`/etc/sysconfig.kdl`)
-   - Hostname configuration
-   - Nameserver configuration
-   - Network interface configuration with multiple address types
-
-2. **Integration Points**
-   - Machined installer writes initial configuration during installation
-   - Plugins can read and apply configuration through gRPC APIs
-
-### 🚧 Planned Implementation
-
-#### Provisioning Plugin
-A dedicated plugin (`provisioning-plugin`) that will aggregate configuration from multiple sources:
-
-##### Priority Order (highest to lowest)
-1. Local configuration files (`/etc/sysconfig.kdl`)
-2. Cloud-init sources (NoCloud, ConfigDrive)
-3. Cloud vendor metadata services
-
-##### Planned Data Sources
-
-**Cloud-Init Compatible**
-- **NoCloud**: ISO/USB with `cidata` label
-- **ConfigDrive**: OpenStack-style configuration drive
-- **Network Config v1**: Basic network configuration
-- **Network Config v2**: Netplan-style advanced networking
-
-**Cloud Vendors**
-- **Amazon EC2**: Instance metadata service (169.254.169.254)
-- **DigitalOcean**: Metadata ISO and droplet configuration
-- **Microsoft Azure**: Azure Instance Metadata Service
-- **Google Cloud Platform**: GCP metadata server
-- **Oracle Cloud**: OCI metadata service
-- **SmartOS/Triton**: mdata-get integration
-- **OpenStack**: Full metadata API support
-
-**Local Sources**
-- `/etc/sysconfig.kdl`: Primary local configuration
-- `/etc/cloud/cloud.cfg`: Cloud-init configuration
-- `/var/lib/cloud/`: Cloud-init runtime data
-
-##### Supported Configuration Types
-- **Hostname**: System hostname and FQDN
-- **Network Configuration**:
-  - Static IP addresses (IPv4/IPv6)
-  - DHCP configuration
-  - Gateway and routing
-  - DNS servers and search domains
-  - MTU settings
-  - VLAN, bonding, bridging (planned)
-- **SSH Configuration**:
-  - Authorized keys management
-  - User account provisioning
-- **User Data**:
-  - First-boot scripts
-  - Cloud-init user-data
-- **Package Management** (future):
-  - Package installation
-  - Repository configuration
-- **Storage** (future):
-  - Disk partitioning
-  - Filesystem creation
-  - Mount points
+The provisioning CLI is designed to:
+- Parse KDL configuration files and convert them to sysconfig state
+- Auto-detect cloud environments and fetch their metadata
+- Determine if network setup is required before cloud provisioning
+- Write configuration directly to sysconfig via Unix socket
+- Support multiple configuration sources with priority-based merging
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                 Boot Process                     │
-├─────────────────────────────────────────────────┤
-│                                                  │
-│  1. System Boot                                  │
-│       ↓                                          │
-│  2. SysConfig Service Starts                     │
-│       ↓                                          │
-│  3. Provisioning Plugin Starts                   │
-│       ↓                                          │
-│  4. Read Configuration Sources:                  │
-│     • /etc/sysconfig.kdl (if exists)            │
-│     • Cloud-init sources                         │
-│     • Cloud vendor metadata                      │
-│       ↓                                          │
-│  5. Merge Configurations (priority-based)        │
-│       ↓                                          │
-│  6. Apply Through SysConfig API                  │
-│       ↓                                          │
-│  7. Platform Plugins Execute Changes             │
-│                                                  │
-└─────────────────────────────────────────────────┘
+Unlike the previous plugin-based approach, this tool operates as a standalone CLI that:
+1. Gathers configuration from various sources
+2. Merges them based on priority
+3. Writes the final state to sysconfig
+4. Exits after completion
+
+This design simplifies the provisioning workflow and makes it easier to integrate into boot processes.
+
+## Installation
+
+```bash
+cd sysconfig-provisioning
+cargo build --release
+sudo cp target/release/provisioning-plugin /usr/local/bin/sysconfig-provision
 ```
 
-## Configuration Format
+## Usage
 
-### KDL Configuration Example
+### Basic Commands
+
+#### Parse a KDL configuration file
+```bash
+sysconfig-provision parse --config /etc/sysconfig.kdl
+```
+
+#### Auto-detect and apply configuration
+```bash
+sysconfig-provision autodetect --check-network
+```
+
+#### Apply from specific sources
+```bash
+sysconfig-provision apply --sources local,ec2,cloud-init
+```
+
+#### Check current provisioning status
+```bash
+sysconfig-provision status
+```
+
+#### Detect available sources
+```bash
+sysconfig-provision detect [--network]
+```
+
+### Command Details
+
+#### `apply` - Apply provisioning configuration
+```bash
+sysconfig-provision apply [OPTIONS]
+
+Options:
+  -c, --config <PATH>           Path to KDL configuration file
+  --sources <LIST>              Enable specific sources (comma-separated)
+  --disable-sources <LIST>      Disable specific sources (comma-separated)
+  -d, --dry-run                 Show what would be applied without making changes
+  --force                       Force apply even if no changes detected
+```
+
+#### `autodetect` - Auto-detect and apply provisioning
+```bash
+sysconfig-provision autodetect [OPTIONS]
+
+Options:
+  --check-network               Check if network setup is required first
+  -d, --dry-run                 Show what would be applied without making changes
+  --network-timeout <SECONDS>   Max time to wait for network sources (default: 30)
+```
+
+#### `parse` - Parse and validate a KDL config
+```bash
+sysconfig-provision parse [OPTIONS]
+
+Options:
+  -c, --config <PATH>           Path to KDL configuration file (required)
+  -f, --format <FORMAT>         Output format: json or pretty (default: pretty)
+```
+
+#### `detect` - Detect available provisioning sources
+```bash
+sysconfig-provision detect [OPTIONS]
+
+Options:
+  --network                     Check network sources (requires network)
+  -f, --format <FORMAT>         Output format: json or pretty (default: pretty)
+```
+
+#### `status` - Show current provisioning status
+```bash
+sysconfig-provision status [OPTIONS]
+
+Options:
+  -f, --format <FORMAT>         Output format: json or pretty (default: pretty)
+```
+
+## Configuration Sources
+
+The provisioning CLI supports multiple configuration sources, each with a priority level:
+
+| Source | Priority | Description |
+|--------|----------|-------------|
+| Local KDL | 1 | Local KDL configuration files |
+| Cloud-Init | 10 | Cloud-init metadata and userdata |
+| EC2 | 20 | Amazon EC2 instance metadata |
+| Azure | 21 | Microsoft Azure instance metadata |
+| GCP | 22 | Google Cloud Platform metadata |
+| DigitalOcean | 23 | DigitalOcean droplet metadata |
+| OpenStack | 24 | OpenStack metadata service |
+| SmartOS | 30 | SmartOS metadata service |
+
+Lower priority numbers take precedence when merging configurations.
+
+## KDL Configuration Format
+
+The provisioning CLI accepts KDL (KDL Document Language) configuration files:
 
 ```kdl
-hostname "web-server-01"
+// System hostname
+hostname "my-server"
 
-nameserver "8.8.8.8"
-nameserver "8.8.4.4"
+// DNS nameservers
+nameservers "8.8.8.8" "1.1.1.1"
 
-interface "eth0" {
-    address name="ipv4" kind="static" "192.168.1.100/24"
-    address name="gateway" kind="static" "192.168.1.1"
+// Network interfaces
+interface "net0" {
+    address "dhcp" primary=true
+    mtu 1500
+    enabled true
 }
 
-interface "eth1" {
-    address name="dhcp" kind="dhcp4"
+interface "net1" {
+    address "192.168.1.100/24" "192.168.1.1"
+    mtu 9000
+    enabled true
 }
+
+// SSH authorized keys
+ssh-keys {
+    root "ssh-rsa AAAAB3NzaC1... user@host"
+    admin "ssh-ed25519 AAAAC3Nza... admin@host"
+}
+
+// NTP servers
+ntp-servers "pool.ntp.org" "time.google.com"
+
+// Timezone
+timezone "America/Los_Angeles"
 ```
 
-### Cloud-Init Network Config v1 Example
+## Boot-Time Integration
 
-```yaml
-version: 1
-config:
-  - type: physical
-    name: eth0
-    mac_address: "52:54:00:12:34:56"
-    subnets:
-      - type: static
-        address: 192.168.1.100/24
-        gateway: 192.168.1.1
-  - type: nameserver
-    address: [8.8.8.8, 8.8.4.4]
-    search: [example.com]
+### Systemd Service
+
+Create `/etc/systemd/system/sysconfig-provision.service`:
+
+```ini
+[Unit]
+Description=System Provisioning
+After=network-pre.target
+Before=network.target
+Wants=sysconfig.service
+After=sysconfig.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sysconfig-provision autodetect --check-network
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-## Building
+### SMF Service (illumos)
 
-### Prerequisites
-- Rust 1.70 or later
-- Protocol Buffers compiler (`protoc`)
+Create an SMF manifest for automatic provisioning on boot:
 
-### Build Commands
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='sysconfig-provision'>
+  <service name='system/sysconfig-provision' type='service' version='1'>
+    <dependency name='sysconfig' type='service' grouping='require_all' restart_on='none'>
+      <service_fmri value='svc:/system/sysconfig:default' />
+    </dependency>
+    
+    <dependency name='filesystem' type='service' grouping='require_all' restart_on='none'>
+      <service_fmri value='svc:/system/filesystem/local:default' />
+    </dependency>
+    
+    <exec_method type='method' name='start' exec='/usr/local/bin/sysconfig-provision autodetect --check-network' timeout_seconds='60' />
+    <exec_method type='method' name='stop' exec=':true' timeout_seconds='10' />
+    
+    <instance name='default' enabled='true' />
+  </service>
+</service_bundle>
+```
+
+## Workflow
+
+### Boot-Time Provisioning
+
+1. **Early Boot Detection**: The tool checks for local configuration files first
+2. **Network Assessment**: Determines if network is required for cloud metadata
+3. **Minimal Network Setup**: If needed, configures basic DHCP on primary interface
+4. **Source Detection**: Identifies available configuration sources
+5. **Configuration Fetch**: Retrieves configuration from all available sources
+6. **Priority Merge**: Merges configurations based on priority
+7. **State Application**: Writes final configuration to sysconfig
+8. **Plugin Distribution**: Sysconfig distributes state to appropriate plugins
+
+### Manual Provisioning
 
 ```bash
-# Build all components
-cd installer
+# Check what sources are available
+sysconfig-provision detect --network
+
+# Apply configuration from a specific KDL file
+sysconfig-provision apply --config /path/to/config.kdl
+
+# Apply from cloud sources only
+sysconfig-provision apply --sources ec2,azure,gcp
+
+# Dry run to see what would change
+sysconfig-provision apply --config /path/to/config.kdl --dry-run
+```
+
+## Environment Variables
+
+- `SYSCONFIG_SOCKET`: Path to sysconfig Unix socket (default: auto-detected)
+- `RUST_LOG`: Logging level (e.g., `info`, `debug`, `trace`)
+- `XDG_RUNTIME_DIR`: Runtime directory for non-root users
+
+## Network Detection Logic
+
+The tool uses several methods to determine if network setup is required:
+
+1. **Local Configuration Check**: Looks for local config files that don't require network
+2. **Cloud Environment Detection**: Checks DMI/SMBIOS for cloud vendor strings
+3. **Metadata Service Probing**: Attempts to reach known metadata endpoints
+4. **SmartOS Detection**: Checks for SmartOS-specific tools and local metadata
+
+If network is required but not configured, the tool can:
+- Apply a minimal DHCP configuration to the primary interface
+- Wait for network to come up
+- Then fetch cloud metadata
+
+## Development
+
+### Building from Source
+
+```bash
+git clone <repository>
+cd sysconfig-provisioning
 cargo build --release
-
-# Build specific components
-cargo build -p sysconfig --release
-cargo build -p sysconfig-plugins --release
-cargo build -p machineconfig --release
 ```
 
-## Deployment
-
-### illumos/SmartOS
-
-1. Install the sysconfig service binary to `/usr/lib/sysconfig/sysconfig`
-2. Install plugins to `/usr/lib/sysconfig/plugins/`
-3. Create SMF manifest for the service
-4. Import and enable the service:
-   ```bash
-   svccfg import /lib/svc/manifest/system/sysconfig.xml
-   svcadm enable sysconfig
-   ```
-
-### Linux (systemd)
-
-1. Install binaries to `/usr/lib/sysconfig/`
-2. Create systemd unit files
-3. Enable and start services:
-   ```bash
-   systemctl enable sysconfig.service
-   systemctl start sysconfig.service
-   ```
-
-## Testing
-
-### Manual Testing
+### Running Tests
 
 ```bash
-# Test KDL parsing
-cat > /tmp/test.kdl << EOF
-hostname "test-host"
-nameserver "1.1.1.1"
-EOF
+# Unit tests
+cargo test
 
-# Run sysconfig with test configuration
-sysconfig --socket /tmp/sysconfig.sock &
-
-# Use CLI to interact
-sysconfig-cli --socket /tmp/sysconfig.sock get-state
+# Integration test with sysconfig
+./test_cli.sh
 ```
 
-### Integration Testing
+### Adding a New Source
 
+To add support for a new configuration source:
+
+1. Create a new module in `src/sources/`
+2. Implement the source trait with `load()` and `is_available()` methods
+3. Add the source to `SourceManager` in `src/sources.rs`
+4. Define its priority in the `SourcePriority` enum
+5. Update the documentation
+
+## Troubleshooting
+
+### Common Issues
+
+**Tool can't connect to sysconfig**
+- Ensure sysconfig service is running
+- Check socket path with `SYSCONFIG_SOCKET` environment variable
+- Verify permissions on the socket file
+
+**Network sources not detected**
+- Check network connectivity
+- Verify metadata service endpoints are accessible
+- Look for firewall rules blocking metadata services
+- Check the `--network-timeout` parameter
+
+**Configuration not being applied**
+- Run with `--dry-run` to see what would be changed
+- Check sysconfig logs for errors
+- Verify the configuration syntax is valid
+- Use `parse` command to validate KDL files
+
+### Debug Logging
+
+Enable detailed logging:
 ```bash
-# Test with cloud-init NoCloud datasource
-mkdir -p /tmp/cidata
-cat > /tmp/cidata/meta-data << EOF
-instance-id: test-001
-hostname: test-vm
-EOF
-
-cat > /tmp/cidata/user-data << EOF
-#cloud-config
-ssh_authorized_keys:
-  - ssh-rsa AAAAB3... user@host
-EOF
-
-# Create ISO
-genisoimage -o /tmp/cidata.iso -V cidata -r -J /tmp/cidata
+RUST_LOG=debug sysconfig-provision autodetect --check-network
 ```
-
-## Roadmap
-
-### Phase 1: Core Implementation (Current)
-- [x] Basic sysconfig service
-- [x] Plugin architecture
-- [x] KDL configuration parser
-- [x] Platform plugins (basic)
-
-### Phase 2: Provisioning Plugin (Next)
-- [ ] Multi-source configuration reader
-- [ ] Cloud-init compatibility
-- [ ] Major cloud vendor support
-- [ ] Configuration merging logic
-
-### Phase 3: Advanced Features
-- [ ] Network configuration v2
-- [ ] Package management integration
-- [ ] Storage configuration
-- [ ] Service management
-- [ ] User/group management
-
-### Phase 4: Enterprise Features
-- [ ] Configuration validation
-- [ ] Rollback capability
-- [ ] Audit logging
-- [ ] Remote configuration management
-- [ ] Encrypted configuration support
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Implement your changes
-4. Add tests
-5. Submit a pull request
 
 ## License
 
-This project is part of the illumos installer and follows the same licensing terms.
-
-## References
-
-- [Cloud-Init Documentation](https://cloud-init.io/)
-- [KDL Specification](https://kdl.dev/)
-- [illumos Project](https://illumos.org/)
-- [EC2 Metadata](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-metadata.html)
-- [Azure IMDS](https://docs.microsoft.com/en-us/azure/virtual-machines/linux/instance-metadata-service)
+See LICENSE file in the repository root.

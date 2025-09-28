@@ -1,0 +1,189 @@
+#!/bin/sh
+#
+# PROVIDE: sysconfig_freebsd_base
+# REQUIRE: sysconfig
+# BEFORE: NETWORKING
+# KEYWORD: shutdown
+
+# sysconfig_freebsd_base - FreeBSD Base Configuration Plugin
+#
+# Add the following lines to /etc/rc.conf to enable the FreeBSD base plugin:
+#
+# sysconfig_freebsd_base_enable="YES"
+# sysconfig_freebsd_base_socket="/var/run/sysconfig-freebsd-base.sock"
+# sysconfig_freebsd_base_service_socket="/var/run/sysconfig.sock"
+# sysconfig_freebsd_base_log_level="info,freebsd_base_plugin=debug"
+# sysconfig_freebsd_base_dry_run="NO"
+
+. /etc/rc.subr
+
+name="sysconfig_freebsd_base"
+rcvar="sysconfig_freebsd_base_enable"
+
+# Set defaults
+: ${sysconfig_freebsd_base_enable:="NO"}
+: ${sysconfig_freebsd_base_socket:="/var/run/sysconfig-freebsd-base.sock"}
+: ${sysconfig_freebsd_base_service_socket:="/var/run/sysconfig.sock"}
+: ${sysconfig_freebsd_base_log_level:="info"}
+: ${sysconfig_freebsd_base_user:="root"}
+: ${sysconfig_freebsd_base_group:="wheel"}
+: ${sysconfig_freebsd_base_dry_run:="NO"}
+
+# Path to the binary
+command="/usr/local/lib/sysconfig/plugins/freebsd-base-plugin"
+command_args="--socket ${sysconfig_freebsd_base_socket} --service-socket ${sysconfig_freebsd_base_service_socket}"
+pidfile="/var/run/${name}.pid"
+
+# Add dry-run flag if enabled
+if checkyesno sysconfig_freebsd_base_dry_run; then
+    command_args="${command_args} --dry-run"
+fi
+
+# Required files/dirs
+required_files="${sysconfig_freebsd_base_service_socket}"
+required_dirs=""
+
+# Export environment variables
+export RUST_LOG="${sysconfig_freebsd_base_log_level}"
+
+# Extra commands
+extra_commands="reload status"
+
+start_precmd="sysconfig_freebsd_base_prestart"
+start_cmd="sysconfig_freebsd_base_start"
+stop_cmd="sysconfig_freebsd_base_stop"
+reload_cmd="sysconfig_freebsd_base_reload"
+status_cmd="sysconfig_freebsd_base_status"
+
+sysconfig_freebsd_base_prestart()
+{
+    # Check if sysconfig is running
+    if ! service sysconfig status >/dev/null 2>&1; then
+        err 1 "sysconfig service is not running"
+    fi
+
+    # Wait for sysconfig socket to be available
+    local count=0
+    while [ ${count} -lt 10 ]; do
+        if [ -S "${sysconfig_freebsd_base_service_socket}" ]; then
+            break
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    if [ ! -S "${sysconfig_freebsd_base_service_socket}" ]; then
+        err 1 "sysconfig socket not available at ${sysconfig_freebsd_base_service_socket}"
+    fi
+
+    # Clean up old socket if it exists
+    if [ -S "${sysconfig_freebsd_base_socket}" ]; then
+        rm -f "${sysconfig_freebsd_base_socket}"
+    fi
+
+    # Ensure runtime directory exists
+    socket_dir=$(dirname "${sysconfig_freebsd_base_socket}")
+    if [ ! -d "${socket_dir}" ]; then
+        install -d -o ${sysconfig_freebsd_base_user} -g ${sysconfig_freebsd_base_group} -m 0755 "${socket_dir}"
+    fi
+
+    return 0
+}
+
+sysconfig_freebsd_base_start()
+{
+    check_startmsgs && echo "Starting ${name}."
+
+    # Start the daemon in the background
+    /usr/sbin/daemon -c -f -p ${pidfile} -u ${sysconfig_freebsd_base_user} \
+        ${command} ${command_args} > /var/log/${name}.log 2>&1
+
+    # Wait for socket to appear
+    local count=0
+    while [ ${count} -lt 10 ]; do
+        if [ -S "${sysconfig_freebsd_base_socket}" ]; then
+            chmod 0666 "${sysconfig_freebsd_base_socket}"
+            check_startmsgs && echo "${name} started successfully."
+            return 0
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    warn "${name} failed to create socket"
+    return 1
+}
+
+sysconfig_freebsd_base_stop()
+{
+    check_startmsgs && echo "Stopping ${name}."
+
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        kill -TERM ${pid} 2>/dev/null
+
+        # Wait for process to terminate
+        local count=0
+        while [ ${count} -lt 10 ]; do
+            if ! kill -0 ${pid} 2>/dev/null; then
+                rm -f ${pidfile}
+                rm -f ${sysconfig_freebsd_base_socket}
+                check_startmsgs && echo "${name} stopped."
+                return 0
+            fi
+            sleep 1
+            count=$((count + 1))
+        done
+
+        # Force kill if still running
+        kill -KILL ${pid} 2>/dev/null
+        rm -f ${pidfile}
+        rm -f ${sysconfig_freebsd_base_socket}
+    else
+        warn "${name} is not running?"
+    fi
+
+    return 0
+}
+
+sysconfig_freebsd_base_reload()
+{
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        check_startmsgs && echo "Reloading ${name} configuration."
+        kill -HUP ${pid}
+    else
+        warn "${name} is not running?"
+        return 1
+    fi
+}
+
+sysconfig_freebsd_base_status()
+{
+    if [ -f ${pidfile} ]; then
+        pid=$(cat ${pidfile})
+        if kill -0 ${pid} 2>/dev/null; then
+            echo "${name} is running as pid ${pid}."
+            if [ -S ${sysconfig_freebsd_base_socket} ]; then
+                echo "Plugin socket: ${sysconfig_freebsd_base_socket} (active)"
+            else
+                echo "Plugin socket: ${sysconfig_freebsd_base_socket} (missing!)"
+            fi
+            if [ -S ${sysconfig_freebsd_base_service_socket} ]; then
+                echo "Service socket: ${sysconfig_freebsd_base_service_socket} (connected)"
+            else
+                echo "Service socket: ${sysconfig_freebsd_base_service_socket} (missing!)"
+            fi
+            return 0
+        else
+            echo "${name} is not running (stale pidfile)."
+            return 1
+        fi
+    else
+        echo "${name} is not running."
+        return 1
+    fi
+}
+
+load_rc_config ${name}
+run_rc_command "$1"

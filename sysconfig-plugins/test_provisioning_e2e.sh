@@ -188,16 +188,12 @@ echo ""
 # Set log levels
 export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug,provisioning_plugin=debug
 
-# Create initial state file
-echo '{"version": "1.0", "state": {}}' > "$STATE_FILE"
-
 # Start sysconfig service
 echo -e "${BLUE}Starting sysconfig service...${NC}"
 rm -f "$SYSCONFIG_SOCKET" 2>/dev/null || true
 
 "$INSTALLER_ROOT/sysconfig/target/debug/sysconfig" \
     --socket "$SYSCONFIG_SOCKET" \
-    --state-file "$STATE_FILE" \
     2>&1 | sed 's/^/[sysconfig] /' &
 
 SYSCONFIG_PID=$!
@@ -253,7 +249,6 @@ fi
     --socket "$PROVISIONING_PLUGIN_SOCKET" \
     --service-socket "$SYSCONFIG_SOCKET" \
     --config-file "$PROVISIONING_CONFIG" \
-    --enable local \
     2>&1 | sed 's/^/[provisioning] /' &
 
 PROVISIONING_PID=$!

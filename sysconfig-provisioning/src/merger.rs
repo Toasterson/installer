@@ -28,15 +28,33 @@ impl ConfigMerger {
     pub fn merge(&self) -> ProvisioningConfig {
         let mut result = ProvisioningConfig::default();
 
-        // Process in reverse order (highest priority number first)
-        // so that lower priority numbers can override
-        for (priority, config) in self.configs.iter().rev() {
+        // Process configurations in priority order (lower number = higher priority)
+        for (priority, config) in self.configs.iter() {
             trace!("Merging configuration with priority {}", priority);
 
-            // Hostname - take from highest priority source
+            // For singleton fields, take from highest priority (first non-None)
+
+            // Hostname - take from highest priority source that has it
             if config.hostname.is_some() && result.hostname.is_none() {
                 result.hostname = config.hostname.clone();
             }
+
+            // User data - take from highest priority source that has it
+            if config.user_data.is_some() && result.user_data.is_none() {
+                result.user_data = config.user_data.clone();
+            }
+
+            // User data base64 - take from highest priority source that has it
+            if config.user_data_base64.is_some() && result.user_data_base64.is_none() {
+                result.user_data_base64 = config.user_data_base64.clone();
+            }
+
+            // Timezone - take from highest priority source that has it
+            if config.timezone.is_some() && result.timezone.is_none() {
+                result.timezone = config.timezone.clone();
+            }
+
+            // For collection fields, merge unique values
 
             // Nameservers - merge unique values
             for ns in &config.nameservers {
@@ -52,11 +70,6 @@ impl ConfigMerger {
                 }
             }
 
-            // Interfaces - merge with override based on priority
-            for (name, iface) in &config.interfaces {
-                result.interfaces.insert(name.clone(), iface.clone());
-            }
-
             // SSH keys - merge unique values
             for key in &config.ssh_authorized_keys {
                 if !result.ssh_authorized_keys.contains(key) {
@@ -69,21 +82,6 @@ impl ConfigMerger {
                 if !result.users.iter().any(|u| u.name == user.name) {
                     result.users.push(user.clone());
                 }
-            }
-
-            // User data - take from highest priority source
-            if config.user_data.is_some() && result.user_data.is_none() {
-                result.user_data = config.user_data.clone();
-            }
-
-            // User data base64 - take from highest priority source
-            if config.user_data_base64.is_some() && result.user_data_base64.is_none() {
-                result.user_data_base64 = config.user_data_base64.clone();
-            }
-
-            // Metadata - merge with override
-            for (key, value) in &config.metadata {
-                result.metadata.insert(key.clone(), value.clone());
             }
 
             // Routes - merge unique routes
@@ -104,44 +102,20 @@ impl ConfigMerger {
                 }
             }
 
-            // Timezone - take from highest priority source
-            if config.timezone.is_some() && result.timezone.is_none() {
-                result.timezone = config.timezone.clone();
-            }
-        }
+            // For map fields, higher priority overrides
 
-        // Now apply overrides from higher priority configs (lower numbers)
-        for (priority, config) in self.configs.iter() {
-            trace!("Applying overrides from priority {}", priority);
-
-            // Override hostname from higher priority
-            if config.hostname.is_some() {
-                result.hostname = config.hostname.clone();
-            }
-
-            // Override user data from higher priority
-            if config.user_data.is_some() {
-                result.user_data = config.user_data.clone();
-            }
-
-            // Override user data base64 from higher priority
-            if config.user_data_base64.is_some() {
-                result.user_data_base64 = config.user_data_base64.clone();
-            }
-
-            // Override timezone from higher priority
-            if config.timezone.is_some() {
-                result.timezone = config.timezone.clone();
-            }
-
-            // Override interfaces from higher priority
+            // Interfaces - only insert if not already present (preserves higher priority)
             for (name, iface) in &config.interfaces {
-                result.interfaces.insert(name.clone(), iface.clone());
+                if !result.interfaces.contains_key(name) {
+                    result.interfaces.insert(name.clone(), iface.clone());
+                }
             }
 
-            // Override metadata values from higher priority
+            // Metadata - only insert if not already present (preserves higher priority)
             for (key, value) in &config.metadata {
-                result.metadata.insert(key.clone(), value.clone());
+                if !result.metadata.contains_key(key) {
+                    result.metadata.insert(key.clone(), value.clone());
+                }
             }
         }
 
@@ -201,7 +175,7 @@ mod tests {
 
         // Config with eth0
         let mut config1 = ProvisioningConfig::default();
-        let mut eth0 = InterfaceConfig {
+        let eth0 = InterfaceConfig {
             mac_address: Some("aa:bb:cc:dd:ee:ff".to_string()),
             mtu: Some(1500),
             addresses: vec![AddressConfig {

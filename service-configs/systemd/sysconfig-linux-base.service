@@ -1,0 +1,70 @@
+[Unit]
+Description=Linux Base Configuration Plugin
+Documentation=man:linux-base-plugin(1)
+After=sysconfig.service
+Requires=sysconfig.service
+PartOf=sysconfig.service
+Before=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=5
+User=root
+Group=root
+
+# Environment
+Environment="RUST_LOG=info,linux_base_plugin=debug"
+
+# Runtime directory
+RuntimeDirectory=sysconfig
+RuntimeDirectoryMode=0755
+
+# Main process
+ExecStart=/usr/lib/sysconfig/plugins/linux-base-plugin \
+    --socket /run/sysconfig-linux-base.sock \
+    --service-socket /run/sysconfig.sock
+
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Security hardening
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+NoNewPrivileges=yes
+
+# Allow writing to necessary paths for network configuration
+ReadWritePaths=/etc/hostname /etc/hosts /etc/resolv.conf
+ReadWritePaths=/etc/systemd/network /run/systemd/network
+ReadWritePaths=/etc/NetworkManager /run/NetworkManager
+ReadWritePaths=/etc/netplan /run/netplan
+ReadWritePaths=/run/sysconfig
+ReadWritePaths=/sys/class/net
+ReadWritePaths=/proc/sys/net
+
+# Capabilities needed for network configuration
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_BROADCAST
+CapabilityBoundingSet=CAP_NET_RAW CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+CapabilityBoundingSet=CAP_SYS_MODULE CAP_SYS_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_MODULE
+
+# Allow access to network namespace
+PrivateNetwork=no
+RestrictNamespaces=no
+
+# Resource limits
+LimitNOFILE=65536
+TasksMax=512
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sysconfig-linux-base
+
+[Install]
+WantedBy=sysconfig.service

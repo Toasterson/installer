@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use tracing::{debug, info, warn};
+use std::path::PathBuf;
+use tracing::{debug, info};
 
 use crate::config::{
-    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig, RouteConfig, UserConfig,
+    AddressConfig, AddressType, InterfaceConfig, ProvisioningConfig,
 };
 use crate::sources::utils;
 
@@ -33,6 +33,26 @@ impl DigitalOceanSource {
     /// Set the config drive mount path
     pub fn set_config_drive_path(&mut self, path: PathBuf) {
         self.config_drive_path = path;
+    }
+
+    /// Check if DigitalOcean metadata service or config drive is available
+    pub async fn is_available(&self) -> bool {
+        // Check if we can reach the DigitalOcean metadata service
+        let url = format!("{}/metadata/v1/", self.metadata_url);
+        if utils::check_metadata_service(&url, None, self.timeout_seconds).await {
+            return true;
+        }
+
+        // Check if config drive is available
+        if self.config_drive_path.exists() {
+            // Check for expected metadata file
+            let metadata_file = self.config_drive_path.join("digitalocean_meta_data.json");
+            if metadata_file.exists() {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Load configuration from DigitalOcean metadata
