@@ -1,0 +1,179 @@
+{
+  "hostname": "test-provisioning-full",
+  "nameservers": [
+    "9.9.9.9",
+    "149.112.112.112",
+    "1.1.1.1",
+    "1.0.0.1",
+    "8.8.8.8",
+    "8.8.4.4"
+  ],
+  "search_domains": [
+    "test.local",
+    "provisioning.local",
+    "example.com"
+  ],
+  "interfaces": {
+    "net0": {
+      "description": "Primary test interface - DHCP",
+      "mtu": 1500,
+      "enabled": true,
+      "addresses": [
+        {
+          "addr_type": "dhcp4",
+          "primary": true
+        },
+        {
+          "addr_type": "addrconf"
+        }
+      ]
+    },
+    "net1": {
+      "mac_address": "52:54:00:12:34:56",
+      "description": "Secondary test interface - Static",
+      "mtu": 1500,
+      "enabled": true,
+      "addresses": [
+        {
+          "addr_type": "static",
+          "address": "192.168.100.10/24",
+          "gateway": "192.168.100.1",
+          "primary": true
+        },
+        {
+          "addr_type": "static",
+          "address": "fd00:test::10/64"
+        }
+      ]
+    },
+    "net2": {
+      "description": "Management interface",
+      "enabled": true,
+      "addresses": [
+        {
+          "addr_type": "static",
+          "address": "10.0.0.50/24",
+          "gateway": "10.0.0.1"
+        },
+        {
+          "addr_type": "dhcp6"
+        }
+      ]
+    },
+    "net0.100": {
+      "description": "VLAN 100 test interface",
+      "vlan_id": 100,
+      "parent": "net0",
+      "enabled": true,
+      "addresses": [
+        {
+          "addr_type": "static",
+          "address": "172.16.100.10/24"
+        }
+      ]
+    },
+    "lo0": {
+      "description": "Loopback interface",
+      "enabled": true,
+      "addresses": [
+        {
+          "addr_type": "static",
+          "address": "127.0.0.1/8"
+        },
+        {
+          "addr_type": "static",
+          "address": "::1/128"
+        }
+      ]
+    }
+  },
+  "routes": [
+    {
+      "destination": "10.10.0.0/16",
+      "gateway": "192.168.100.1",
+      "interface": "net1",
+      "metric": 100
+    },
+    {
+      "destination": "172.16.0.0/12",
+      "gateway": "10.0.0.1",
+      "interface": "net2",
+      "metric": 200
+    },
+    {
+      "destination": "0.0.0.0/0",
+      "gateway": "192.168.100.1",
+      "interface": "net1",
+      "metric": 1000
+    }
+  ],
+  "ssh_authorized_keys": [
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7root1... root@emergency",
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIRoot2... root@backup"
+  ],
+  "users": [
+    {
+      "name": "testadmin",
+      "uid": 1000,
+      "gid": 1000,
+      "groups": ["wheel", "adm", "sys", "staff"],
+      "home": "/home/testadmin",
+      "shell": "/bin/bash",
+      "comment": "Test Administrator",
+      "ssh_keys": [
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7test1... testadmin@test",
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest2... testadmin@backup"
+      ],
+      "sudo": true
+    },
+    {
+      "name": "appuser",
+      "uid": 2000,
+      "gid": 2000,
+      "groups": ["users", "apps"],
+      "home": "/home/appuser",
+      "shell": "/bin/ksh",
+      "comment": "Application User",
+      "ssh_keys": [
+        "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7app1... appuser@test"
+      ],
+      "sudo": false
+    },
+    {
+      "name": "svcuser",
+      "uid": 999,
+      "gid": 999,
+      "groups": ["daemon"],
+      "home": "/var/lib/svcuser",
+      "shell": "/bin/false",
+      "comment": "Service Account",
+      "ssh_keys": [],
+      "sudo": false
+    }
+  ],
+  "ntp_servers": [
+    "pool.ntp.org",
+    "time.cloudflare.com",
+    "time.google.com",
+    "time.nist.gov"
+  ],
+  "timezone": "America/Los_Angeles",
+  "metadata": {
+    "provisioning_version": "1.0.0",
+    "provisioning_date": "2024-01-01",
+    "provisioning_source": "local-test",
+    "environment": "testing",
+    "datacenter": "local",
+    "rack": "test-rack",
+    "role": "test-node",
+    "test_mode": true,
+    "dry_run_enabled": true,
+    "auto_revert": false,
+    "tags": {
+      "environment": "test",
+      "purpose": "provisioning-validation",
+      "owner": "sysadmin",
+      "cost_center": "it-ops"
+    }
+  }
+}

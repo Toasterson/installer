@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# End-to-end test script for sysconfig provisioning plugin
+# End-to-end test script for sysconfig provisioning CLI
 # Tests the complete provisioning pipeline with dry-run mode
 
 set -e
@@ -18,7 +18,7 @@ MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 echo -e "${CYAN}=============================================="
-echo "Sysconfig Provisioning Plugin E2E Test"
+echo "Sysconfig Provisioning CLI E2E Test"
 echo -e "==============================================${NC}"
 echo ""
 
@@ -51,20 +51,23 @@ chmod 700 "$RUNTIME_DIR"
 # Define socket paths and config files
 SYSCONFIG_SOCKET="$RUNTIME_DIR/sysconfig.sock"
 BASE_PLUGIN_SOCKET="$RUNTIME_DIR/sysconfig-illumos-base.sock"
-PROVISIONING_PLUGIN_SOCKET="$RUNTIME_DIR/sysconfig-provisioning.sock"
 STATE_FILE="$RUNTIME_DIR/sysconfig-state.json"
 PROVISIONING_CONFIG="$SCRIPT_DIR/test-provisioning-local.json"
-PROVISIONING_KDL="$SCRIPT_DIR/test-provisioning-config.kdl"
+PROVISIONING_FULL_CONFIG="$SCRIPT_DIR/test-provisioning-full.json"
+PROVISIONING_KDL="$SCRIPT_DIR/test-provisioning-simple.kdl"
+PROVISIONING_KNUS_KDL="$SCRIPT_DIR/test-provisioning-knus.kdl"
 
 # Test data directories
 TEST_DATA_DIR="$RUNTIME_DIR/test-provisioning-data"
 CLOUD_INIT_DIR="$TEST_DATA_DIR/cloud-init"
 
+# Export socket path for provisioning CLI
+export SYSCONFIG_SOCKET
+
 echo -e "${BLUE}Configuration:${NC}"
 echo "  Runtime dir:        $RUNTIME_DIR"
 echo "  Sysconfig socket:   $SYSCONFIG_SOCKET"
 echo "  Base plugin socket: $BASE_PLUGIN_SOCKET"
-echo "  Prov plugin socket: $PROVISIONING_PLUGIN_SOCKET"
 echo "  Config file:        $PROVISIONING_CONFIG"
 echo "  KDL config:         $PROVISIONING_KDL"
 echo "  Test data dir:      $TEST_DATA_DIR"
@@ -76,7 +79,6 @@ cleanup() {
     echo -e "${YELLOW}Cleaning up...${NC}"
 
     # Kill processes
-    [ ! -z "$PROVISIONING_PID" ] && kill $PROVISIONING_PID 2>/dev/null || true
     [ ! -z "$BASE_PLUGIN_PID" ] && kill $BASE_PLUGIN_PID 2>/dev/null || true
     [ ! -z "$SYSCONFIG_PID" ] && kill $SYSCONFIG_PID 2>/dev/null || true
 
@@ -84,7 +86,7 @@ cleanup() {
     sleep 1
 
     # Clean up sockets
-    rm -f "$SYSCONFIG_SOCKET" "$BASE_PLUGIN_SOCKET" "$PROVISIONING_PLUGIN_SOCKET" 2>/dev/null || true
+    rm -f "$SYSCONFIG_SOCKET" "$BASE_PLUGIN_SOCKET" 2>/dev/null || true
 
     echo -e "${GREEN}Cleanup complete${NC}"
 }
@@ -177,8 +179,8 @@ echo "  Building illumos-base-plugin..."
 cd "$SCRIPT_DIR"
 cargo build --bin illumos-base-plugin 2>&1 | grep -E "(Compiling|Finished)" || true
 
-# Build provisioning plugin
-echo "  Building provisioning-plugin..."
+# Build provisioning CLI
+echo "  Building provisioning CLI..."
 cd "$INSTALLER_ROOT/sysconfig-provisioning"
 cargo build --bin provisioning-plugin 2>&1 | grep -E "(Compiling|Finished)" || true
 
@@ -186,7 +188,7 @@ echo -e "${GREEN}✓ All components built${NC}"
 echo ""
 
 # Set log levels
-export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug,provisioning_plugin=debug
+export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug,sysconfig_provisioning=debug
 
 # Start sysconfig service
 echo -e "${BLUE}Starting sysconfig service...${NC}"
@@ -223,10 +225,6 @@ if ! ps -p $BASE_PLUGIN_PID > /dev/null 2>&1; then
 fi
 echo -e "${GREEN}✓ Base plugin started (PID: $BASE_PLUGIN_PID)${NC}"
 
-# Start provisioning plugin
-echo -e "${BLUE}Starting provisioning-plugin...${NC}"
-rm -f "$PROVISIONING_PLUGIN_SOCKET" 2>/dev/null || true
-
 # Create a minimal provisioning config if the full one doesn't exist
 if [ ! -f "$PROVISIONING_CONFIG" ]; then
     echo -e "${YELLOW}Creating minimal provisioning config...${NC}"
@@ -245,37 +243,67 @@ if [ ! -f "$PROVISIONING_CONFIG" ]; then
 EOF
 fi
 
-"$INSTALLER_ROOT/sysconfig-provisioning/target/debug/provisioning-plugin" \
-    --socket "$PROVISIONING_PLUGIN_SOCKET" \
-    --service-socket "$SYSCONFIG_SOCKET" \
-    --config-file "$PROVISIONING_CONFIG" \
-    2>&1 | sed 's/^/[provisioning] /' &
+# Create a test KDL config if it doesn't exist
+if [ ! -f "$PROVISIONING_KDL" ]; then
+    echo -e "${YELLOW}Creating test KDL config...${NC}"
+    echo -e "${YELLOW}Note: The provisioning CLI expects knus KDL format (no sysconfig wrapper)${NC}"
+    cat > "$PROVISIONING_KDL" << 'EOF'
+// Test configuration for sysconfig provisioning CLI
+// This file uses the knus KDL format (no sysconfig wrapper)
 
-PROVISIONING_PID=$!
-sleep 3
+// Set the test system hostname
+hostname "test-host-kdl"
 
-if ! ps -p $PROVISIONING_PID > /dev/null 2>&1; then
-    echo -e "${RED}ERROR: Provisioning plugin failed to start${NC}"
-    exit 1
+// Configure DNS nameservers
+nameserver "8.8.8.8"
+nameserver "1.1.1.1"
+nameserver "9.9.9.9"
+
+// Primary network interface - DHCP
+interface "net0" {
+    address name="v4-dhcp" kind="dhcp4"
+    address name="v6-auto" kind="addrconf"
+}
+
+// Secondary interface - Static IP
+interface "net1" {
+    address name="v4-static" kind="static" "192.168.1.100/24"
+    address name="v6-static" kind="static" "fd00:test::10/64"
+}
+
+// Management interface - Mixed config
+interface "net2" {
+    address name="v4-mgmt" kind="static" "10.0.0.50/24"
+    address name="v6-mgmt" kind="dhcp6"
+}
+EOF
 fi
-echo -e "${GREEN}✓ Provisioning plugin started (PID: $PROVISIONING_PID)${NC}"
 
 echo ""
 echo -e "${MAGENTA}=============================================="
-echo "All Services Running - System Ready for Testing"
+echo "Services Running - System Ready for Testing"
 echo -e "==============================================${NC}"
 echo ""
 
 echo -e "${CYAN}Service Status:${NC}"
 echo "  • sysconfig:           PID $SYSCONFIG_PID"
 echo "  • illumos-base-plugin: PID $BASE_PLUGIN_PID"
-echo "  • provisioning-plugin: PID $PROVISIONING_PID"
 echo ""
 
 echo -e "${CYAN}Test Data Locations:${NC}"
-echo "  • Local config:     $PROVISIONING_CONFIG"
-echo "  • Cloud-init dir:   $CLOUD_INIT_DIR"
-echo "  • KDL config:       $PROVISIONING_KDL"
+echo "  • Minimal config (JSON): $PROVISIONING_CONFIG"
+echo "  • Full config (JSON):    $PROVISIONING_FULL_CONFIG"
+echo "  • Simple config (KDL):   $PROVISIONING_KDL"
+echo "  • Knus format (KDL):     $PROVISIONING_KNUS_KDL"
+echo "  • Cloud-init dir:        $CLOUD_INIT_DIR"
+echo ""
+
+echo -e "${YELLOW}Important Notes about KDL format:${NC}"
+echo "  • The provisioning CLI uses knus parser - no 'sysconfig { }' wrapper needed"
+echo "  • Address kinds must be capitalized: Dhcp4, Dhcp6, Static, Addrconf"
+echo "  • Complex nested structures are not supported"
+echo "  • Only hostname, nameservers, and interfaces are parsed from KDL"
+echo "  • For full feature support, use JSON format instead"
 echo ""
 
 if [ "$EUID" -ne 0 ]; then
@@ -285,48 +313,108 @@ if [ "$EUID" -ne 0 ]; then
     echo ""
 fi
 
+# Path to provisioning CLI
+PROVISIONING_CLI="$INSTALLER_ROOT/sysconfig-provisioning/target/debug/provisioning-plugin"
+
 echo -e "${CYAN}Testing Instructions:${NC}"
 echo ""
-echo "1. Test provisioning with local config:"
-echo -e "   ${GREEN}$INSTALLER_ROOT/sysconfig-provisioning/target/debug/provisioning-plugin \\
-      --apply-now \\
-      --config-file $PROVISIONING_CONFIG${NC}"
+
+echo "1. Test provisioning status:"
+echo -e "   ${GREEN}$PROVISIONING_CLI status${NC}"
 echo ""
 
-echo "2. Test with cloud-init data:"
+echo "2. Detect available provisioning sources:"
+echo -e "   ${GREEN}$PROVISIONING_CLI detect
+   # Or check network sources:
+   $PROVISIONING_CLI detect --network${NC}"
+echo ""
+
+echo "3. Parse and validate a KDL config:"
+echo -e "   ${GREEN}# Try the properly capitalized version:
+   $PROVISIONING_CLI parse --config $PROVISIONING_KNUS_KDL
+
+   # Or try the lowercase version:
+   $PROVISIONING_CLI parse --config $PROVISIONING_KDL
+   # Note: KDL must use knus format (no sysconfig wrapper)${NC}"
+echo ""
+
+echo "4. Apply provisioning with local JSON config:"
+echo -e "   ${GREEN}$PROVISIONING_CLI apply \\
+      --sources local \\
+      --dry-run
+
+   # Apply for real (remove --dry-run):
+   $PROVISIONING_CLI apply \\
+      --sources local${NC}"
+echo ""
+
+echo "5. Apply provisioning with KDL config:"
+echo -e "   ${GREEN}$PROVISIONING_CLI apply \\
+      --config $PROVISIONING_KNUS_KDL \\
+      --dry-run
+
+   # If parsing issues persist, use JSON format:
+   $PROVISIONING_CLI apply \\
+      --config $PROVISIONING_CONFIG \\
+      --dry-run${NC}"
+echo ""
+
+echo "5b. Apply provisioning with full-featured JSON config:"
+echo -e "   ${GREEN}$PROVISIONING_CLI apply \\
+      --config $PROVISIONING_FULL_CONFIG \\
+      --dry-run
+
+   # This config includes users, routes, NTP servers, etc.${NC}"
+echo ""
+
+echo "6. Test with cloud-init data:"
 echo -e "   ${GREEN}# First, set cloud-init paths
    export CLOUD_INIT_META_DATA=$CLOUD_INIT_DIR/meta-data
    export CLOUD_INIT_USER_DATA=$CLOUD_INIT_DIR/user-data
    export CLOUD_INIT_NETWORK_CONFIG=$CLOUD_INIT_DIR/network-config
 
-   # Then trigger provisioning
-   $INSTALLER_ROOT/sysconfig-provisioning/target/debug/provisioning-plugin \\
-      --apply-now \\
-      --enable cloud-init${NC}"
+   # Then apply with cloud-init source
+   $PROVISIONING_CLI apply \\
+      --sources cloud-init \\
+      --dry-run${NC}"
 echo ""
 
-echo "3. Test with sysconfig-cli:"
-echo -e "   ${GREEN}export SYSCONFIG_SOCKET=$SYSCONFIG_SOCKET
-   $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli status
+echo "7. Auto-detect and apply (checks all available sources):"
+echo -e "   ${GREEN}$PROVISIONING_CLI autodetect --dry-run
+
+   # With network check first:
+   $PROVISIONING_CLI autodetect \\
+      --check-network \\
+      --dry-run${NC}"
+echo ""
+
+echo "8. Apply with multiple sources (priority order):"
+echo -e "   ${GREEN}$PROVISIONING_CLI apply \\
+      --sources local,cloud-init,ec2 \\
+      --dry-run${NC}"
+echo ""
+
+echo "9. Test with sysconfig-cli directly:"
+echo -e "   ${GREEN}$INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli status
+   $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli get-state
    $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli apply --file $PROVISIONING_KDL${NC}"
 echo ""
 
-echo "4. Monitor logs:"
-echo "   Watch the terminal output for:"
-echo "   • [sysconfig] - Core service logs"
-echo "   • [base-plugin] - DRY-RUN operations"
-echo "   • [provisioning] - Provisioning plugin logs"
-echo ""
-
-echo "5. Check applied configuration:"
+echo "10. Check applied configuration state:"
 echo -e "   ${GREEN}cat $STATE_FILE | jq .${NC}"
 echo ""
 
 echo -e "${CYAN}Tips:${NC}"
 echo "• Use Ctrl+C to stop all services"
-echo "• Logs show which source provided each config item"
-echo "• DRY-RUN messages indicate what would be changed"
+echo "• Add --debug flag to provisioning commands for verbose output"
+echo "• Use --dry-run to preview changes before applying"
 echo "• State file shows current configuration state"
+echo "• Watch terminal output for [sysconfig] and [base-plugin] logs"
+echo ""
+
+echo -e "${CYAN}Environment Variables:${NC}"
+echo "• SYSCONFIG_SOCKET=$SYSCONFIG_SOCKET (already exported)"
+echo "• RUST_LOG=$RUST_LOG"
 echo ""
 
 echo -e "${MAGENTA}=============================================="

@@ -1,0 +1,44 @@
+// Test configuration for sysconfig provisioning CLI
+// Uses knus KDL format with proper enum capitalization
+
+// Set the test system hostname
+hostname "test-provisioning-host"
+
+// Configure DNS nameservers for testing
+nameserver "9.9.9.9"
+nameserver "149.112.112.112"
+nameserver "1.1.1.1"
+nameserver "1.0.0.1"
+nameserver "8.8.8.8"
+nameserver "8.8.4.4"
+
+// Primary network interface - DHCP configuration
+interface "net0" {
+    address name="v4-dhcp" kind="Dhcp4"
+    address name="v6-auto" kind="Addrconf"
+}
+
+// Secondary interface - Static IP configuration
+interface "net1" selector="mac:52:54:00:12:34:56" {
+    address name="v4-static" kind="Static" "192.168.100.10/24"
+    address name="v6-static" kind="Static" "fd00:test::10/64"
+}
+
+// Management interface - Mixed configuration
+interface "net2" {
+    address name="v4-mgmt" kind="Static" "10.0.0.50/24"
+    address name="v6-mgmt" kind="Dhcp6"
+}
+
+// Test interface with multiple static addresses
+interface "net3" {
+    address name="primary-v4" kind="Static" "172.16.100.10/24"
+    address name="secondary-v4" kind="Static" "172.16.100.11/24"
+    address name="v6-link" kind="Addrconf"
+}
+
+// Loopback interface
+interface "lo0" {
+    address name="v4-loop" kind="Static" "127.0.0.1/8"
+    address name="v6-loop" kind="Static" "::1/128"
+}
