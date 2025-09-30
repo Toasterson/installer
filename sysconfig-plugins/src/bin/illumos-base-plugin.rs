@@ -1428,7 +1428,7 @@ impl IllumosBasePlugin {
                 let mut config = Config::create(&zone_config.name, false, CreationOptions::Default);
 
                 // Set zonepath
-                config.get_global().set_zonepath(&zone_config.zonepath);
+                config.get_global().set_path(&zone_config.zonepath);
 
                 // Set brand
                 config.get_global().set_brand(&zone_config.brand);
@@ -1436,13 +1436,10 @@ impl IllumosBasePlugin {
                 // Add network configurations
                 for network in &zone_config.networks {
                     let net = Net {
-                        physical: Some(network.physical.clone()),
+                        physical: network.physical.clone(),
                         address: network.address.clone(),
                         allowed_address: None,
-                        defrouter: network.defrouter.clone(),
-                        global_nic: None,
-                        mac_addr: None,
-                        vlan_id: None,
+                        default_router: network.defrouter.clone(),
                     };
                     config.add_net(&net);
                 }
@@ -1450,9 +1447,7 @@ impl IllumosBasePlugin {
                 // Add resource controls
                 if let Some(resources) = &zone_config.resources {
                     if let Some(cpu_cap) = resources.cpu_cap {
-                        let capped_cpu = CappedCpu {
-                            ncpus: Some(cpu_cap.to_string()),
-                        };
+                        let capped_cpu = CappedCpu { ncpus: cpu_cap };
                         config.add_capped_cpu(&capped_cpu);
                     }
 
