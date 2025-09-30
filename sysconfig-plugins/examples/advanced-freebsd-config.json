@@ -1,0 +1,630 @@
+{
+  "system": {
+    "hostname": "freebsd-server",
+    "fqdn": "freebsd-server.example.com",
+    "timezone": "UTC",
+    "locale": "en_US.UTF-8",
+    "environment": {
+      "EDITOR": "vi",
+      "PAGER": "less"
+    }
+  },
+  "storage": {
+    "pools": [
+      {
+        "name": "zroot",
+        "pool_type": "zpool",
+        "devices": [],
+        "properties": {
+          "compression": "lz4",
+          "atime": "off",
+          "bootfs": "zroot/ROOT/default"
+        },
+        "topology": {
+          "data": [
+            {
+              "vdev_type": "mirror",
+              "devices": ["/dev/ada0p3", "/dev/ada1p3"]
+            }
+          ],
+          "log": [],
+          "cache": [
+            {
+              "vdev_type": "stripe",
+              "devices": ["/dev/ada2"]
+            }
+          ],
+          "spare": []
+        }
+      },
+      {
+        "name": "storage",
+        "pool_type": "zpool",
+        "devices": [],
+        "properties": {
+          "compression": "gzip-6",
+          "atime": "off",
+          "deduplication": "off"
+        },
+        "topology": {
+          "data": [
+            {
+              "vdev_type": "raidz",
+              "devices": [
+                "/dev/ada3",
+                "/dev/ada4",
+                "/dev/ada5",
+                "/dev/ada6"
+              ]
+            }
+          ],
+          "log": [
+            {
+              "vdev_type": "mirror",
+              "devices": ["/dev/ada7", "/dev/ada8"]
+            }
+          ],
+          "cache": [
+            {
+              "vdev_type": "stripe",
+              "devices": ["/dev/ada9"]
+            }
+          ],
+          "spare": ["/dev/ada10"]
+        }
+      }
+    ],
+    "zfs_datasets": [
+      {
+        "name": "zroot/usr/home",
+        "dataset_type": "filesystem",
+        "properties": {
+          "mountpoint": "/usr/home",
+          "compression": "lz4",
+          "atime": "on"
+        },
+        "quota": "50G",
+        "children": []
+      },
+      {
+        "name": "zroot/usr/jails",
+        "dataset_type": "filesystem",
+        "properties": {
+          "mountpoint": "/usr/jails",
+          "compression": "lz4",
+          "canmount": "on"
+        },
+        "children": [
+          {
+            "name": "zroot/usr/jails/basejail",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/usr/jails/basejail",
+              "readonly": "on"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "name": "storage/data",
+        "dataset_type": "filesystem",
+        "properties": {
+          "mountpoint": "/data",
+          "compression": "gzip-6",
+          "recordsize": "1M"
+        },
+        "quota": "500G",
+        "children": [
+          {
+            "name": "storage/data/databases",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/data/databases",
+              "compression": "lz4",
+              "recordsize": "8K",
+              "primarycache": "metadata"
+            },
+            "quota": "200G",
+            "reservation": "50G",
+            "children": []
+          },
+          {
+            "name": "storage/data/backups",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/data/backups",
+              "compression": "gzip-9",
+              "atime": "off"
+            },
+            "quota": "300G",
+            "children": []
+          }
+        ]
+      }
+    ],
+    "zfs_snapshots": [
+      {
+        "dataset": "zroot/usr/home",
+        "name": "daily-backup",
+        "recursive": true,
+        "properties": {
+          "org.freebsd:backup_type": "daily",
+          "org.freebsd:retention": "30d"
+        }
+      },
+      {
+        "dataset": "storage/data/databases",
+        "name": "pre-maintenance",
+        "recursive": false,
+        "properties": {
+          "org.freebsd:backup_type": "maintenance"
+        }
+      }
+    ],
+    "zfs_replication": [
+      {
+        "source_dataset": "storage/data/databases",
+        "target": "backup-server:backup/freebsd/databases",
+        "replication_type": "incremental",
+        "ssh_config": {
+          "user": "backup",
+          "host": "backup.example.com",
+          "port": 22,
+          "key_path": "/root/.ssh/backup_ed25519"
+        },
+        "exclude_properties": ["mountpoint", "canmount"]
+      }
+    ],
+    "mounts": [
+      {
+        "source": "tmpfs",
+        "target": "/tmp",
+        "fstype": "tmpfs",
+        "options": ["size=2G", "mode=1777"],
+        "persistent": false
+      }
+    ]
+  },
+  "networking": {
+    "interfaces": [
+      {
+        "name": "em0",
+        "addresses": [
+          {
+            "name": "static_v4",
+            "kind": {
+              "static": "192.168.1.50/24"
+            }
+          }
+        ],
+        "gateway": "192.168.1.1",
+        "mtu": 1500,
+        "description": "Primary interface"
+      }
+    ],
+    "nameservers": ["1.1.1.1", "8.8.8.8"],
+    "search_domains": ["example.com"],
+    "ntp_servers": ["0.freebsd.pool.ntp.org", "1.freebsd.pool.ntp.org"]
+  },
+  "software": {
+    "update_on_boot": false,
+    "upgrade_on_boot": false,
+    "packages_to_install": [
+      "vim",
+      "git",
+      "tmux",
+      "htop",
+      "zsh",
+      "sudo",
+      "py39-iocage"
+    ],
+    "repositories": {
+      "pkg": {
+        "repositories": [
+          {
+            "name": "FreeBSD",
+            "url": "pkg+http://pkg.FreeBSD.org/${ABI}/quarterly",
+            "enabled": true,
+            "priority": 100
+          }
+        ],
+        "signature_type": "fingerprints"
+      }
+    }
+  },
+  "users": [
+    {
+      "name": "admin",
+      "description": "System Administrator",
+      "shell": "/usr/local/bin/zsh",
+      "groups": ["wheel", "operator"],
+      "primary_group": "wheel",
+      "home_directory": "/usr/home/admin",
+      "uid": 1000,
+      "create_home": true,
+      "sudo": "unrestricted",
+      "authentication": {
+        "password": {
+          "hash": "$6$rounds=4096$salt$hash...",
+          "expire_on_first_login": false
+        },
+        "ssh_keys": [
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFoo... admin@workstation"
+        ]
+      }
+    }
+  ],
+  "containers": {
+    "jails": [
+      {
+        "name": "web-jail",
+        "jid": 101,
+        "path": "/usr/jails/web-jail",
+        "hostname": "web.example.com",
+        "ip_addresses": ["192.168.1.51"],
+        "interfaces": ["em0"],
+        "parameters": {
+          "exec.start": "/bin/sh /etc/rc",
+          "exec.stop": "/bin/sh /etc/rc.shutdown",
+          "exec.clean": "true",
+          "mount.devfs": "true",
+          "allow.raw_sockets": "false",
+          "persist": "true"
+        },
+        "auto_start": true,
+        "sysconfig": {
+          "system": {
+            "hostname": "web-server",
+            "timezone": "UTC",
+            "locale": "en_US.UTF-8"
+          },
+          "software": {
+            "repositories": {
+              "pkg": {
+                "repositories": [
+                  {
+                    "name": "FreeBSD",
+                    "url": "pkg+http://pkg.FreeBSD.org/${ABI}/quarterly",
+                    "enabled": true,
+                    "priority": 100
+                  }
+                ]
+              }
+            },
+            "packages_to_install": [
+              "nginx",
+              "php81",
+              "php81-mysqli",
+              "mysql80-client"
+            ]
+          },
+          "users": [
+            {
+              "name": "webadmin",
+              "description": "Web Administrator",
+              "shell": "/bin/csh",
+              "groups": ["www"],
+              "home_directory": "/usr/home/webadmin",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": [
+                  "ssh-rsa AAAAB3NzaC1yc2E... webadmin@deploy"
+                ]
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "setup_nginx",
+                "content": "#!/bin/sh\n# Configure Nginx\necho 'nginx_enable=\"YES\"' >> /etc/rc.conf\nservice nginx start\necho 'Web server configured'",
+                "interpreter": "/bin/sh",
+                "run_once": true,
+                "timeout": 300
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "db-jail",
+        "jid": 102,
+        "path": "/usr/jails/db-jail",
+        "hostname": "db.example.com",
+        "ip_addresses": ["192.168.1.52"],
+        "interfaces": ["em0"],
+        "parameters": {
+          "exec.start": "/bin/sh /etc/rc",
+          "exec.stop": "/bin/sh /etc/rc.shutdown",
+          "exec.clean": "true",
+          "mount.devfs": "true",
+          "allow.raw_sockets": "false",
+          "persist": "true",
+          "sysvmsg": "inherit",
+          "sysvsem": "inherit",
+          "sysvshm": "inherit"
+        },
+        "auto_start": true,
+        "sysconfig": {
+          "system": {
+            "hostname": "db-server",
+            "timezone": "UTC",
+            "locale": "en_US.UTF-8"
+          },
+          "storage": {
+            "zfs_datasets": [
+              {
+                "name": "storage/jails/db-jail/data",
+                "dataset_type": "filesystem",
+                "properties": {
+                  "mountpoint": "/var/db/mysql",
+                  "compression": "lz4",
+                  "recordsize": "16K"
+                },
+                "quota": "100G",
+                "reservation": "20G",
+                "children": []
+              }
+            ],
+            "zfs_snapshots": [
+              {
+                "dataset": "storage/jails/db-jail/data",
+                "name": "daily-backup",
+                "recursive": false,
+                "properties": {
+                  "org.freebsd:backup_schedule": "daily"
+                }
+              }
+            ]
+          },
+          "software": {
+            "packages_to_install": [
+              "mysql80-server",
+              "mysql80-client"
+            ]
+          },
+          "users": [
+            {
+              "name": "mysql",
+              "description": "MySQL Database User",
+              "shell": "/usr/sbin/nologin",
+              "groups": ["mysql"],
+              "system_user": true,
+              "home_directory": "/var/db/mysql",
+              "create_home": false,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": []
+              }
+            },
+            {
+              "name": "dbadmin",
+              "description": "Database Administrator",
+              "shell": "/bin/csh",
+              "groups": ["mysql", "wheel"],
+              "home_directory": "/usr/home/dbadmin",
+              "create_home": true,
+              "sudo": {
+                "custom": [
+                  "ALL=(mysql) NOPASSWD: /usr/local/bin/mysql*",
+                  "ALL=(root) NOPASSWD: /usr/sbin/service mysql-server *"
+                ]
+              },
+              "authentication": {
+                "ssh_keys": [
+                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBar... dbadmin@management"
+                ]
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "setup_mysql",
+                "content": "#!/bin/sh\n# Initialize MySQL\necho 'mysql_enable=\"YES\"' >> /etc/rc.conf\n/usr/local/bin/mysql_install_db --user=mysql\nservice mysql-server start\necho 'MySQL database initialized and started'",
+                "interpreter": "/bin/sh",
+                "working_directory": "/var/db/mysql",
+                "environment": {
+                  "MYSQL_HOME": "/var/db/mysql"
+                },
+                "run_once": true,
+                "output_file": "/var/log/mysql-setup.log",
+                "timeout": 600
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "monitoring-jail",
+        "jid": 103,
+        "path": "/usr/jails/monitoring-jail",
+        "hostname": "monitoring.example.com",
+        "ip_addresses": ["192.168.1.53"],
+        "interfaces": ["em0"],
+        "parameters": {
+          "exec.start": "/bin/sh /etc/rc",
+          "exec.stop": "/bin/sh /etc/rc.shutdown",
+          "exec.clean": "true",
+          "mount.devfs": "true",
+          "allow.raw_sockets": "false",
+          "persist": "true"
+        },
+        "auto_start": true,
+        "sysconfig": {
+          "system": {
+            "hostname": "monitoring",
+            "timezone": "UTC"
+          },
+          "software": {
+            "packages_to_install": [
+              "prometheus",
+              "grafana9",
+              "node_exporter"
+            ]
+          },
+          "users": [
+            {
+              "name": "prometheus",
+              "description": "Prometheus Service User",
+              "shell": "/usr/sbin/nologin",
+              "groups": ["prometheus"],
+              "system_user": true,
+              "home_directory": "/var/db/prometheus",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": []
+              }
+            },
+            {
+              "name": "grafana",
+              "description": "Grafana Service User",
+              "shell": "/usr/sbin/nologin",
+              "groups": ["grafana"],
+              "system_user": true,
+              "home_directory": "/var/db/grafana",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": []
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "configure_monitoring",
+                "content": "#!/bin/sh\n# Configure Prometheus\ncat > /usr/local/etc/prometheus.yml << 'EOF'\nglobal:\n  scrape_interval: 15s\nscrape_configs:\n  - job_name: 'prometheus'\n    static_configs:\n      - targets: ['localhost:9090']\n  - job_name: 'node'\n    static_configs:\n      - targets: ['192.168.1.50:9100']\n  - job_name: 'mysql'\n    static_configs:\n      - targets: ['192.168.1.52:9104']\nEOF\necho 'prometheus_enable=\"YES\"' >> /etc/rc.conf\necho 'grafana_enable=\"YES\"' >> /etc/rc.conf\nservice prometheus start\nservice grafana start\necho 'Monitoring stack configured'",
+                "interpreter": "/bin/sh",
+                "run_once": true,
+                "timeout": 300
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "backup-jail",
+        "jid": 104,
+        "path": "/usr/jails/backup-jail",
+        "hostname": "backup.example.com",
+        "ip_addresses": ["192.168.1.54"],
+        "interfaces": ["em0"],
+        "parameters": {
+          "exec.start": "/bin/sh /etc/rc",
+          "exec.stop": "/bin/sh /etc/rc.shutdown",
+          "exec.clean": "true",
+          "mount.devfs": "true",
+          "allow.raw_sockets": "false",
+          "persist": "true"
+        },
+        "auto_start": true,
+        "sysconfig": {
+          "system": {
+            "hostname": "backup-server",
+            "timezone": "UTC"
+          },
+          "storage": {
+            "zfs_datasets": [
+              {
+                "name": "storage/backups/system",
+                "dataset_type": "filesystem",
+                "properties": {
+                  "mountpoint": "/backups",
+                  "compression": "gzip-9",
+                  "deduplication": "on",
+                  "atime": "off"
+                },
+                "quota": "1T",
+                "children": []
+              }
+            ]
+          },
+          "software": {
+            "packages_to_install": [
+              "rsync",
+              "borgbackup",
+              "rclone"
+            ]
+          },
+          "users": [
+            {
+              "name": "backup",
+              "description": "Backup Service User",
+              "shell": "/bin/csh",
+              "groups": ["backup"],
+              "home_directory": "/usr/home/backup",
+              "create_home": true,
+              "sudo": {
+                "custom": [
+                  "ALL=(root) NOPASSWD: /sbin/zfs send *",
+                  "ALL=(root) NOPASSWD: /sbin/zfs recv *"
+                ]
+              },
+              "authentication": {
+                "ssh_keys": [
+                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBaz... backup@management"
+                ]
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "setup_backup_service",
+                "content": "#!/bin/sh\n# Setup backup cron jobs\necho '0 2 * * * /usr/local/bin/borg create /backups/borg::$(date +%Y%m%d) /data' | crontab -u backup -\necho '0 3 * * * /usr/local/bin/rclone sync /backups/borg remote:backups/freebsd' | crontab -u backup -\necho 'Backup service configured'",
+                "interpreter": "/bin/sh",
+                "run_once": true,
+                "timeout": 180
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "early_scripts": [
+      {
+        "id": "system_preparation",
+        "content": "#!/bin/sh\necho 'Preparing FreeBSD system...'\n# Enable ZFS\necho 'zfs_enable=\"YES\"' >> /etc/rc.conf\n# Create jail directories\nmkdir -p /usr/jails\nmkdir -p /var/log/sysconfig\necho 'System preparation complete'",
+        "interpreter": "/bin/sh",
+        "run_once": true,
+        "timeout": 300
+      }
+    ],
+    "main_scripts": [
+      {
+        "id": "configure_jail_networking",
+        "content": "#!/bin/sh\n# Configure jail networking\necho 'jail_enable=\"YES\"' >> /etc/rc.conf\necho 'jail_parallel_start=\"YES\"' >> /etc/rc.conf\necho 'cloned_interfaces=\"lo1\"' >> /etc/rc.conf\necho 'ifconfig_lo1=\"127.0.1.1/32\"' >> /etc/rc.conf\nservice netif cloneup\necho 'Jail networking configured'",
+        "interpreter": "/bin/sh",
+        "run_once": true,
+        "timeout": 120
+      },
+      {
+        "id": "setup_zfs_monitoring",
+        "content": "#!/bin/sh\n# Set up ZFS monitoring\necho '0 */6 * * * root /sbin/zpool scrub zroot' | tee -a /var/cron/tabs/root\necho '0 */6 * * * root /sbin/zpool scrub storage' | tee -a /var/cron/tabs/root\necho 'ZFS monitoring configured'",
+        "interpreter": "/bin/sh",
+        "run_once": true,
+        "timeout": 60
+      }
+    ],
+    "late_scripts": [
+      {
+        "id": "finalize_setup",
+        "content": "#!/bin/sh\necho 'Finalizing FreeBSD server setup...'\n# Log completion\necho \"$(date): Advanced FreeBSD server provisioned successfully\" >> /var/log/provisioning.log\necho 'Server ready for production use'",
+        "interpreter": "/bin/sh",
+        "run_once": true,
+        "output_file": "/var/log/finalization.log"
+      }
+    ]
+  },
+  "power_state": {
+    "mode": "noop",
+    "delay": 0,
+    "message": "Advanced FreeBSD server provisioning complete"
+  }
+}

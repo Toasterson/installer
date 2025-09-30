@@ -2,12 +2,15 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+#[cfg(target_os = "illumos")]
+use zone::{Brand, Zone, ZoneBuilder, ZoneState};
+
 use clap::Parser;
 use sysconfig_plugins::tasks::files::Files;
 use sysconfig_plugins::tasks::network_settings::NetworkSettings;
 use sysconfig_plugins::tasks::packages::Packages;
 use sysconfig_plugins::tasks::users::Users;
-use sysconfig_plugins::{TaskHandler, TaskChange, TaskChangeType};
+use sysconfig_plugins::{TaskChange, TaskChangeType, TaskHandler};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
@@ -18,9 +21,9 @@ mod proto {
     tonic::include_proto!("sysconfig");
 }
 
-use sysconfig_config_schema::UnifiedConfig;
 use proto::plugin_service_server::{PluginService, PluginServiceServer};
 use proto::sys_config_service_client::SysConfigServiceClient;
+use sysconfig_config_schema::UnifiedConfig;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about = "Sysconfig base plugin: illumos", long_about = None)]
@@ -202,7 +205,10 @@ impl PluginService for IllumosBasePlugin {
         let auto_dry_run = self.inner.read().await.auto_dry_run;
         let effective_dry_run = req.dry_run || auto_dry_run;
 
-        info!("DEBUG: auto_dry_run: {}, effective_dry_run: {}", auto_dry_run, effective_dry_run);
+        info!(
+            "DEBUG: auto_dry_run: {}, effective_dry_run: {}",
+            auto_dry_run, effective_dry_run
+        );
 
         if auto_dry_run && !req.dry_run {
             info!("Auto-enabling dry-run mode since running as non-root user");
@@ -234,7 +240,10 @@ impl PluginService for IllumosBasePlugin {
 
             // Apply system configuration
             if let Some(system) = &unified_config.system {
-                if let Err(e) = self.apply_system_config(system, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_system_config(system, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply system config: {}", e),
@@ -243,9 +252,26 @@ impl PluginService for IllumosBasePlugin {
                 }
             }
 
+            // Apply container configuration
+            if let Some(containers) = &unified_config.containers {
+                if let Err(e) = self
+                    .apply_container_config(containers, effective_dry_run, &mut task_changes)
+                    .await
+                {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply container config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
             // Apply networking configuration
             if let Some(networking) = &unified_config.networking {
-                if let Err(e) = self.apply_networking_config(networking, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_networking_config(networking, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply networking config: {}", e),
@@ -256,7 +282,10 @@ impl PluginService for IllumosBasePlugin {
 
             // Apply software configuration
             if let Some(software) = &unified_config.software {
-                if let Err(e) = self.apply_software_config(software, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_software_config(software, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply software config: {}", e),
@@ -267,7 +296,10 @@ impl PluginService for IllumosBasePlugin {
 
             // Apply user configuration
             for user in &unified_config.users {
-                if let Err(e) = self.apply_user_config(user, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_user_config(user, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply user config: {}", e),
@@ -278,7 +310,10 @@ impl PluginService for IllumosBasePlugin {
 
             // Apply script configuration
             if let Some(scripts) = &unified_config.scripts {
-                if let Err(e) = self.apply_scripts_config(scripts, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_scripts_config(scripts, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply scripts config: {}", e),
@@ -289,7 +324,10 @@ impl PluginService for IllumosBasePlugin {
 
             // Apply storage configuration
             if let Some(storage) = &unified_config.storage {
-                if let Err(e) = self.apply_storage_config(storage, effective_dry_run, &mut task_changes).await {
+                if let Err(e) = self
+                    .apply_storage_config(storage, effective_dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
                         error: format!("failed to apply storage config: {}", e),
@@ -297,7 +335,6 @@ impl PluginService for IllumosBasePlugin {
                     }));
                 }
             }
-
         } else {
             // Fall back to legacy JSON format
             debug!("Processing legacy JSON configuration format");
@@ -401,6 +438,34 @@ impl PluginService for IllumosBasePlugin {
         Ok(Response::new(resp))
     }
 
+    async fn execute_action(
+        &self,
+        request: Request<proto::PluginExecuteActionRequest>,
+    ) -> Result<Response<proto::PluginExecuteActionResponse>, Status> {
+        let req = request.into_inner();
+        let result = format!(
+            "illumos-base executed action '{}' with params '{}'",
+            req.action, req.parameters
+        );
+        Ok(Response::new(proto::PluginExecuteActionResponse {
+            success: true,
+            error: String::new(),
+            result,
+        }))
+    }
+
+    async fn notify_state_change(
+        &self,
+        _request: Request<proto::NotifyStateChangeRequest>,
+    ) -> Result<Response<proto::NotifyStateChangeResponse>, Status> {
+        Ok(Response::new(proto::NotifyStateChangeResponse {
+            success: true,
+            error: String::new(),
+        }))
+    }
+}
+
+impl IllumosBasePlugin {
     async fn apply_system_config(
         &self,
         system: &sysconfig_config_schema::SystemConfig,
@@ -437,7 +502,14 @@ impl PluginService for IllumosBasePlugin {
             } else {
                 // On illumos, timezone is set via SMF
                 let output = std::process::Command::new("/usr/sbin/svccfg")
-                    .args(&["-s", "system/timezone", "setprop", "timezone/localtime", "=", timezone])
+                    .args(&[
+                        "-s",
+                        "system/timezone",
+                        "setprop",
+                        "timezone/localtime",
+                        "=",
+                        timezone,
+                    ])
                     .output()
                     .map_err(|e| format!("failed to execute svccfg: {}", e))?;
 
@@ -480,14 +552,22 @@ impl PluginService for IllumosBasePlugin {
         // DNS nameservers
         if !networking.nameservers.is_empty() {
             network_settings["nameservers"] = serde_json::Value::Array(
-                networking.nameservers.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                networking
+                    .nameservers
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
         // DNS search domains
         if !networking.search_domains.is_empty() {
             network_settings["search_domains"] = serde_json::Value::Array(
-                networking.search_domains.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                networking
+                    .search_domains
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
@@ -520,13 +600,21 @@ impl PluginService for IllumosBasePlugin {
 
         if !software.packages_to_install.is_empty() {
             packages_json["install"] = serde_json::Value::Array(
-                software.packages_to_install.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                software
+                    .packages_to_install
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
         if !software.packages_to_remove.is_empty() {
             packages_json["remove"] = serde_json::Value::Array(
-                software.packages_to_remove.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                software
+                    .packages_to_remove
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
@@ -563,7 +651,8 @@ impl PluginService for IllumosBasePlugin {
                             cmd.arg("--disable");
                         }
 
-                        let output = cmd.output()
+                        let output = cmd
+                            .output()
                             .map_err(|e| format!("failed to execute pkg command: {}", e))?;
 
                         if !output.status.success() {
@@ -618,7 +707,10 @@ impl PluginService for IllumosBasePlugin {
 
         if !user.groups.is_empty() {
             user_json["groups"] = serde_json::Value::Array(
-                user.groups.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                user.groups
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
@@ -637,14 +729,19 @@ impl PluginService for IllumosBasePlugin {
         // Handle SSH keys
         if !user.authentication.ssh_keys.is_empty() {
             user_json["ssh_keys"] = serde_json::Value::Array(
-                user.authentication.ssh_keys.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                user.authentication
+                    .ssh_keys
+                    .iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
             );
         }
 
         // Handle password
         if let Some(password_config) = &user.authentication.password {
             user_json["password_hash"] = serde_json::Value::String(password_config.hash.clone());
-            user_json["expire_on_first_login"] = serde_json::Value::Bool(password_config.expire_on_first_login);
+            user_json["expire_on_first_login"] =
+                serde_json::Value::Bool(password_config.expire_on_first_login);
         }
 
         // Handle sudo configuration
@@ -658,7 +755,10 @@ impl PluginService for IllumosBasePlugin {
                 }
                 sysconfig_config_schema::SudoConfig::Custom(rules) => {
                     user_json["sudo_rules"] = serde_json::Value::Array(
-                        rules.iter().map(|s| serde_json::Value::String(s.clone())).collect()
+                        rules
+                            .iter()
+                            .map(|s| serde_json::Value::String(s.clone()))
+                            .collect(),
                     );
                 }
             }
@@ -685,15 +785,18 @@ impl PluginService for IllumosBasePlugin {
 
         // Handle different script phases
         for script in &scripts.early_scripts {
-            self.execute_script(script, "early", dry_run, task_changes).await?;
+            self.execute_script(script, "early", dry_run, task_changes)
+                .await?;
         }
 
         for script in &scripts.main_scripts {
-            self.execute_script(script, "main", dry_run, task_changes).await?;
+            self.execute_script(script, "main", dry_run, task_changes)
+                .await?;
         }
 
         for script in &scripts.late_scripts {
-            self.execute_script(script, "late", dry_run, task_changes).await?;
+            self.execute_script(script, "late", dry_run, task_changes)
+                .await?;
         }
 
         Ok(())
@@ -740,7 +843,8 @@ impl PluginService for IllumosBasePlugin {
             cmd.env(key, value);
         }
 
-        let output = cmd.output()
+        let output = cmd
+            .output()
             .map_err(|e| format!("failed to execute script: {}", e))?;
 
         // Clean up temporary file
@@ -767,7 +871,7 @@ impl PluginService for IllumosBasePlugin {
             path: format!("script:{}:{}", phase, script.id),
             old_value: None,
             new_value: Some(serde_json::Value::String(
-                String::from_utf8_lossy(&output.stdout).to_string()
+                String::from_utf8_lossy(&output.stdout).to_string(),
             )),
             verbose: true,
         });
@@ -783,38 +887,98 @@ impl PluginService for IllumosBasePlugin {
     ) -> Result<(), String> {
         debug!("Applying storage configuration");
 
-        // Handle ZFS pools
+        // Handle ZFS pools with advanced topology
         for pool in &storage.pools {
             if let sysconfig_config_schema::StoragePoolType::ZfsPool = pool.pool_type {
-                if dry_run {
-                    info!("DRY-RUN: Would create/configure ZFS pool {}", pool.name);
+                // Check if pool exists
+                let pool_exists = if dry_run {
+                    false
                 } else {
-                    // Check if pool exists
-                    let pool_exists = std::process::Command::new("/usr/sbin/zpool")
+                    std::process::Command::new("/usr/sbin/zpool")
                         .args(&["list", "-H", &pool.name])
                         .output()
                         .map(|output| output.status.success())
-                        .unwrap_or(false);
+                        .unwrap_or(false)
+                };
 
-                    if !pool_exists && !pool.devices.is_empty() {
-                        // Create the pool
-                        let mut cmd = std::process::Command::new("/usr/sbin/zpool");
-                        cmd.args(&["create", &pool.name]);
-                        cmd.args(&pool.devices);
+                if dry_run {
+                    info!("DRY-RUN: Would create/configure ZFS pool {}", pool.name);
+                } else if !pool_exists && (!pool.devices.is_empty() || pool.topology.is_some()) {
+                    // Create the pool with topology
+                    let mut cmd = std::process::Command::new("/usr/sbin/zpool");
+                    cmd.args(&["create", &pool.name]);
 
-                        let output = cmd.output()
-                            .map_err(|e| format!("failed to execute zpool create: {}", e))?;
-
-                        if !output.status.success() {
-                            return Err(format!(
-                                "failed to create ZFS pool {}: {}",
-                                pool.name,
-                                String::from_utf8_lossy(&output.stderr)
-                            ));
+                    if let Some(topology) = &pool.topology {
+                        // Add data vdevs
+                        for vdev in &topology.data {
+                            match vdev.vdev_type {
+                                sysconfig_config_schema::ZfsVdevType::Stripe => {
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Mirror => {
+                                    cmd.arg("mirror");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz => {
+                                    cmd.arg("raidz");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz2 => {
+                                    cmd.arg("raidz2");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz3 => {
+                                    cmd.arg("raidz3");
+                                    cmd.args(&vdev.devices);
+                                }
+                            }
                         }
+
+                        // Add log vdevs
+                        for vdev in &topology.log {
+                            cmd.arg("log");
+                            match vdev.vdev_type {
+                                sysconfig_config_schema::ZfsVdevType::Mirror => {
+                                    cmd.arg("mirror");
+                                    cmd.args(&vdev.devices);
+                                }
+                                _ => {
+                                    cmd.args(&vdev.devices);
+                                }
+                            }
+                        }
+
+                        // Add cache vdevs
+                        for vdev in &topology.cache {
+                            cmd.arg("cache");
+                            cmd.args(&vdev.devices);
+                        }
+
+                        // Add spare vdevs
+                        if !topology.spare.is_empty() {
+                            cmd.arg("spare");
+                            cmd.args(&topology.spare);
+                        }
+                    } else {
+                        // Simple pool creation
+                        cmd.args(&pool.devices);
                     }
 
-                    // Set pool properties
+                    let output = cmd
+                        .output()
+                        .map_err(|e| format!("failed to execute zpool create: {}", e))?;
+
+                    if !output.status.success() {
+                        return Err(format!(
+                            "failed to create ZFS pool {}: {}",
+                            pool.name,
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
+
+                // Set pool properties (both for new and existing pools)
+                if !dry_run {
                     for (prop, value) in &pool.properties {
                         let output = std::process::Command::new("/usr/sbin/zpool")
                             .args(&["set", &format!("{}={}", prop, value), &pool.name])
@@ -824,7 +988,9 @@ impl PluginService for IllumosBasePlugin {
                         if !output.status.success() {
                             return Err(format!(
                                 "failed to set property {}={} on pool {}: {}",
-                                prop, value, pool.name,
+                                prop,
+                                value,
+                                pool.name,
                                 String::from_utf8_lossy(&output.stderr)
                             ));
                         }
@@ -832,16 +998,27 @@ impl PluginService for IllumosBasePlugin {
                 }
 
                 task_changes.push(TaskChange {
-                    change_type: if pool_exists { TaskChangeType::Update } else { TaskChangeType::Create },
+                    change_type: if pool_exists {
+                        TaskChangeType::Update
+                    } else {
+                        TaskChangeType::Create
+                    },
                     path: format!("zpool:{}", pool.name),
                     old_value: None,
                     new_value: Some(serde_json::json!({
                         "devices": pool.devices,
-                        "properties": pool.properties
+                        "properties": pool.properties,
+                        "topology": pool.topology
                     })),
                     verbose: false,
                 });
             }
+        }
+
+        // Handle advanced ZFS datasets
+        for dataset in &storage.zfs_datasets {
+            self.create_zfs_dataset(dataset, dry_run, task_changes)
+                .await?;
         }
 
         // Handle filesystems
@@ -862,6 +1039,24 @@ impl PluginService for IllumosBasePlugin {
                             return Err(format!(
                                 "failed to create ZFS filesystem {}: {}",
                                 filesystem.device, stderr
+                            ));
+                        }
+                    }
+
+                    // Set filesystem properties
+                    for (prop, value) in &filesystem.options {
+                        let output = std::process::Command::new("/usr/sbin/zfs")
+                            .args(&["set", &format!("{}={}", prop, value), &filesystem.device])
+                            .output()
+                            .map_err(|e| format!("failed to set filesystem property: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to set property {}={} on filesystem {}: {}",
+                                prop,
+                                value,
+                                filesystem.device,
+                                String::from_utf8_lossy(&output.stderr)
                             ));
                         }
                     }
@@ -887,7 +1082,10 @@ impl PluginService for IllumosBasePlugin {
             } else {
                 // Create mount point if it doesn't exist
                 if let Err(e) = std::fs::create_dir_all(&mount.target) {
-                    return Err(format!("failed to create mount point {}: {}", mount.target, e));
+                    return Err(format!(
+                        "failed to create mount point {}: {}",
+                        mount.target, e
+                    ));
                 }
 
                 // Mount the filesystem
@@ -903,13 +1101,15 @@ impl PluginService for IllumosBasePlugin {
 
                 cmd.args(&[&mount.source, &mount.target]);
 
-                let output = cmd.output()
+                let output = cmd
+                    .output()
                     .map_err(|e| format!("failed to mount filesystem: {}", e))?;
 
                 if !output.status.success() {
                     return Err(format!(
                         "failed to mount {} at {}: {}",
-                        mount.source, mount.target,
+                        mount.source,
+                        mount.target,
                         String::from_utf8_lossy(&output.stderr)
                     ));
                 }
@@ -930,30 +1130,533 @@ impl PluginService for IllumosBasePlugin {
             });
         }
 
+        // Handle ZFS snapshots
+        for snapshot in &storage.zfs_snapshots {
+            self.create_zfs_snapshot(snapshot, dry_run, task_changes)
+                .await?;
+        }
+
+        // Handle ZFS replication
+        for replication in &storage.zfs_replication {
+            self.setup_zfs_replication(replication, dry_run, task_changes)
+                .await?;
+        }
+
         Ok(())
     }
 
-    async fn execute_action(
-        let req = request.into_inner();
-        let result = format!(
-            "illumos-base executed action '{}' with params '{}'",
-            req.action, req.parameters
-        );
-        Ok(Response::new(proto::PluginExecuteActionResponse {
-            success: true,
-            error: String::new(),
-            result,
-        }))
+    async fn create_zfs_dataset(
+        &self,
+        dataset: &sysconfig_config_schema::ZfsDatasetConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        if dry_run {
+            info!("DRY-RUN: Would create ZFS dataset {}", dataset.name);
+        } else {
+            // Create the dataset
+            let mut cmd = std::process::Command::new("/usr/sbin/zfs");
+            cmd.args(&["create"]);
+
+            match &dataset.dataset_type {
+                sysconfig_config_schema::ZfsDatasetType::Filesystem => {
+                    // No additional arguments needed for filesystem
+                }
+                sysconfig_config_schema::ZfsDatasetType::Volume { size } => {
+                    cmd.args(&["-V", size]);
+                }
+            }
+
+            cmd.arg(&dataset.name);
+
+            let output = cmd
+                .output()
+                .map_err(|e| format!("failed to create ZFS dataset: {}", e))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.contains("dataset already exists") {
+                    return Err(format!(
+                        "failed to create ZFS dataset {}: {}",
+                        dataset.name, stderr
+                    ));
+                }
+            }
+
+            // Set properties
+            for (prop, value) in &dataset.properties {
+                let output = std::process::Command::new("/usr/sbin/zfs")
+                    .args(&["set", &format!("{}={}", prop, value), &dataset.name])
+                    .output()
+                    .map_err(|e| format!("failed to set dataset property: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set property {}={} on dataset {}: {}",
+                        prop,
+                        value,
+                        dataset.name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+
+            // Set quota if specified
+            if let Some(quota) = &dataset.quota {
+                let output = std::process::Command::new("/usr/sbin/zfs")
+                    .args(&["set", &format!("quota={}", quota), &dataset.name])
+                    .output()
+                    .map_err(|e| format!("failed to set quota: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set quota {} on dataset {}: {}",
+                        quota,
+                        dataset.name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+
+            // Set reservation if specified
+            if let Some(reservation) = &dataset.reservation {
+                let output = std::process::Command::new("/usr/sbin/zfs")
+                    .args(&[
+                        "set",
+                        &format!("reservation={}", reservation),
+                        &dataset.name,
+                    ])
+                    .output()
+                    .map_err(|e| format!("failed to set reservation: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set reservation {} on dataset {}: {}",
+                        reservation,
+                        dataset.name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+        }
+
+        // Recursively create child datasets
+        for child in &dataset.children {
+            Box::pin(self.create_zfs_dataset(child, dry_run, task_changes)).await?;
+        }
+
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Create,
+            path: format!("zfs-dataset:{}", dataset.name),
+            old_value: None,
+            new_value: Some(serde_json::json!({
+                "dataset_type": dataset.dataset_type,
+                "properties": dataset.properties,
+                "quota": dataset.quota,
+                "reservation": dataset.reservation
+            })),
+            verbose: false,
+        });
+
+        Ok(())
     }
 
-    async fn notify_state_change(
+    async fn create_zfs_snapshot(
         &self,
-        _request: Request<proto::NotifyStateChangeRequest>,
-    ) -> Result<Response<proto::NotifyStateChangeResponse>, Status> {
-        Ok(Response::new(proto::NotifyStateChangeResponse {
-            success: true,
-            error: String::new(),
-        }))
+        snapshot: &sysconfig_config_schema::ZfsSnapshotConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        let snapshot_name = format!("{}@{}", snapshot.dataset, snapshot.name);
+
+        if dry_run {
+            info!("DRY-RUN: Would create ZFS snapshot {}", snapshot_name);
+        } else {
+            let mut cmd = std::process::Command::new("/usr/sbin/zfs");
+            cmd.args(&["snapshot"]);
+
+            if snapshot.recursive {
+                cmd.arg("-r");
+            }
+
+            cmd.arg(&snapshot_name);
+
+            let output = cmd
+                .output()
+                .map_err(|e| format!("failed to create ZFS snapshot: {}", e))?;
+
+            if !output.status.success() {
+                return Err(format!(
+                    "failed to create ZFS snapshot {}: {}",
+                    snapshot_name,
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+
+            // Set snapshot properties
+            for (prop, value) in &snapshot.properties {
+                let output = std::process::Command::new("/usr/sbin/zfs")
+                    .args(&["set", &format!("{}={}", prop, value), &snapshot_name])
+                    .output()
+                    .map_err(|e| format!("failed to set snapshot property: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to set property {}={} on snapshot {}: {}",
+                        prop,
+                        value,
+                        snapshot_name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+            }
+        }
+
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Create,
+            path: format!("zfs-snapshot:{}", snapshot_name),
+            old_value: None,
+            new_value: Some(serde_json::json!({
+                "dataset": snapshot.dataset,
+                "name": snapshot.name,
+                "recursive": snapshot.recursive,
+                "properties": snapshot.properties
+            })),
+            verbose: false,
+        });
+
+        Ok(())
+    }
+
+    async fn setup_zfs_replication(
+        &self,
+        replication: &sysconfig_config_schema::ZfsReplicationConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        if dry_run {
+            info!(
+                "DRY-RUN: Would setup ZFS replication from {} to {}",
+                replication.source_dataset, replication.target
+            );
+        } else {
+            match replication.replication_type {
+                sysconfig_config_schema::ZfsReplicationType::Send => {
+                    // Setup basic ZFS send
+                    let mut cmd = std::process::Command::new("/usr/sbin/zfs");
+                    cmd.args(&["send", &replication.source_dataset]);
+
+                    if let Some(ssh_config) = &replication.ssh_config {
+                        // Pipe to SSH for remote replication
+                        let ssh_cmd = format!(
+                            "ssh {}@{} zfs recv {}",
+                            ssh_config.user, ssh_config.host, replication.target
+                        );
+                        info!(
+                            "Would execute: zfs send {} | {}",
+                            replication.source_dataset, ssh_cmd
+                        );
+                    }
+                }
+                sysconfig_config_schema::ZfsReplicationType::Incremental => {
+                    info!(
+                        "Incremental replication setup for {}",
+                        replication.source_dataset
+                    );
+                }
+                sysconfig_config_schema::ZfsReplicationType::Full => {
+                    info!("Full replication setup for {}", replication.source_dataset);
+                }
+            }
+        }
+
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Create,
+            path: format!(
+                "zfs-replication:{}:{}",
+                replication.source_dataset, replication.target
+            ),
+            old_value: None,
+            new_value: Some(serde_json::json!({
+                "source_dataset": replication.source_dataset,
+                "target": replication.target,
+                "replication_type": replication.replication_type,
+                "ssh_config": replication.ssh_config
+            })),
+            verbose: false,
+        });
+
+        Ok(())
+    }
+
+    async fn apply_container_config(
+        &self,
+        containers: &sysconfig_config_schema::ContainerConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying container configuration");
+
+        // Handle Solaris/illumos zones
+        for zone in &containers.zones {
+            self.apply_zone_config(zone, dry_run, task_changes).await?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "illumos")]
+    async fn apply_zone_config(
+        &self,
+        zone_config: &sysconfig_config_schema::ZoneConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        if dry_run {
+            info!("DRY-RUN: Would configure zone {}", zone_config.name);
+        } else {
+            // Check if zone exists
+            let existing_zone = Zone::find(&zone_config.name)
+                .map_err(|e| format!("failed to check zone existence: {}", e))?;
+
+            if existing_zone.is_none() {
+                // Create new zone using ZoneBuilder
+                let mut builder = ZoneBuilder::new(&zone_config.name);
+
+                // Set brand
+                let brand = match zone_config.brand.as_str() {
+                    "sparse" => Brand::Sparse,
+                    "whole" => Brand::Whole,
+                    "lx" => Brand::Lx,
+                    "bhyve" => Brand::Bhyve,
+                    "kvm" => Brand::Kvm,
+                    _ => Brand::Sparse, // default fallback
+                };
+                builder = builder.brand(brand);
+
+                // Set zonepath
+                builder = builder.zonepath(&zone_config.zonepath);
+
+                // Add network configurations
+                for network in &zone_config.networks {
+                    // Create network interface configuration
+                    let mut net_config = zone::Net::new();
+                    net_config.physical = Some(network.physical.clone());
+
+                    if let Some(address) = &network.address {
+                        net_config.address = Some(address.clone());
+                    }
+
+                    if let Some(defrouter) = &network.defrouter {
+                        net_config.defrouter = Some(defrouter.clone());
+                    }
+
+                    builder = builder.net(net_config);
+                }
+
+                // Add resource controls
+                if let Some(resources) = &zone_config.resources {
+                    if let Some(cpu_cap) = resources.cpu_cap {
+                        let mut capped_cpu = zone::CappedCpu::new();
+                        capped_cpu.ncpus = Some(cpu_cap);
+                        builder = builder.capped_cpu(capped_cpu);
+                    }
+
+                    if let Some(memory_cap) = &resources.physical_memory_cap {
+                        let mut capped_memory = zone::CappedMemory::new();
+                        capped_memory.physical = Some(memory_cap.clone());
+                        if let Some(swap_cap) = &resources.swap_memory_cap {
+                            capped_memory.swap = Some(swap_cap.clone());
+                        }
+                        builder = builder.capped_memory(capped_memory);
+                    }
+                }
+
+                // Add custom properties as attributes
+                for (key, value) in &zone_config.properties {
+                    let attr = zone::Attr {
+                        name: key.clone(),
+                        value: value.clone(),
+                        attr_type: zone::AttrType::String,
+                    };
+                    builder = builder.attr(attr);
+                }
+
+                // Create the zone
+                let zone = builder
+                    .create()
+                    .map_err(|e| format!("failed to create zone {}: {}", zone_config.name, e))?;
+
+                // Install the zone if needed
+                match zone_config.state {
+                    sysconfig_config_schema::ZoneState::Installed
+                    | sysconfig_config_schema::ZoneState::Running => {
+                        zone.install(&[]).map_err(|e| {
+                            format!("failed to install zone {}: {}", zone_config.name, e)
+                        })?;
+                    }
+                    _ => {}
+                }
+
+                // Boot the zone if needed
+                if let sysconfig_config_schema::ZoneState::Running = zone_config.state {
+                    zone.boot(&[])
+                        .map_err(|e| format!("failed to boot zone {}: {}", zone_config.name, e))?;
+                }
+            } else {
+                let zone = existing_zone.unwrap();
+
+                // Handle state transitions for existing zone
+                let current_state = zone
+                    .state()
+                    .map_err(|e| format!("failed to get zone state: {}", e))?;
+
+                match (current_state, &zone_config.state) {
+                    (ZoneState::Configured, sysconfig_config_schema::ZoneState::Installed)
+                    | (ZoneState::Configured, sysconfig_config_schema::ZoneState::Running) => {
+                        zone.install(&[]).map_err(|e| {
+                            format!("failed to install zone {}: {}", zone_config.name, e)
+                        })?;
+                    }
+                    (ZoneState::Installed, sysconfig_config_schema::ZoneState::Running) => {
+                        zone.boot(&[]).map_err(|e| {
+                            format!("failed to boot zone {}: {}", zone_config.name, e)
+                        })?;
+                    }
+                    _ => {} // No state change needed
+                }
+            }
+
+            // Apply nested sysconfig if present
+            if let Some(nested_config) = &zone_config.sysconfig {
+                info!("Applying nested sysconfig to zone {}", zone_config.name);
+                self.apply_nested_sysconfig(
+                    &zone_config.name,
+                    nested_config,
+                    dry_run,
+                    task_changes,
+                )
+                .await?;
+            }
+        }
+
+        self.finish_zone_config(zone_config, task_changes).await
+    }
+
+    #[cfg(not(target_os = "illumos"))]
+    async fn apply_zone_config(
+        &self,
+        zone_config: &sysconfig_config_schema::ZoneConfig,
+        _dry_run: bool,
+        _task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        Err(format!(
+            "Zone management is only supported on illumos/Solaris, zone {} cannot be created",
+            zone_config.name
+        ))
+    }
+
+    async fn finish_zone_config(
+        &self,
+        zone_config: &sysconfig_config_schema::ZoneConfig,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Create,
+            path: format!("zone:{}", zone_config.name),
+            old_value: None,
+            new_value: Some(serde_json::json!({
+                "brand": zone_config.brand,
+                "state": zone_config.state,
+                "zonepath": zone_config.zonepath,
+                "networks": zone_config.networks,
+                "resources": zone_config.resources,
+                "properties": zone_config.properties,
+                "has_nested_config": zone_config.sysconfig.is_some()
+            })),
+            verbose: false,
+        });
+
+        Ok(())
+    }
+
+    async fn apply_nested_sysconfig(
+        &self,
+        zone_name: &str,
+        config: &sysconfig_config_schema::UnifiedConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        if dry_run {
+            info!(
+                "DRY-RUN: Would apply nested sysconfig to zone {}",
+                zone_name
+            );
+            return Ok(());
+        }
+
+        // Serialize the nested config to JSON
+        let config_json = config
+            .to_json()
+            .map_err(|e| format!("failed to serialize nested config: {}", e))?;
+
+        // Create a temporary file with the nested config
+        let temp_file = format!("/tmp/zone_{}_nested_config.json", zone_name);
+        std::fs::write(&temp_file, config_json)
+            .map_err(|e| format!("failed to write nested config file: {}", e))?;
+
+        // Copy the config file to the zone
+        let zone_config_path =
+            format!("/zones/{}/root/etc/sysconfig/nested-config.json", zone_name);
+        let output = std::process::Command::new("/usr/bin/cp")
+            .args(&[&temp_file, &zone_config_path])
+            .output()
+            .map_err(|e| format!("failed to copy config to zone: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "failed to copy nested config to zone {}: {}",
+                zone_name,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // Execute sysconfig provisioning inside the zone
+        let output = std::process::Command::new("/usr/sbin/zlogin")
+            .args(&[
+                zone_name,
+                "/usr/local/bin/sysconfig",
+                "provision",
+                "--config-file",
+                "/etc/sysconfig/nested-config.json",
+                "--run-once",
+            ])
+            .output()
+            .map_err(|e| format!("failed to execute nested provisioning: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "failed to apply nested config in zone {}: {}",
+                zone_name,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        // Clean up temporary file
+        let _ = std::fs::remove_file(&temp_file);
+
+        task_changes.push(TaskChange {
+            change_type: TaskChangeType::Update,
+            path: format!("zone:{}:nested-config", zone_name),
+            old_value: None,
+            new_value: Some(serde_json::json!({
+                "applied": true,
+                "config_path": "/etc/sysconfig/nested-config.json"
+            })),
+            verbose: false,
+        });
+
+        Ok(())
     }
 }
 

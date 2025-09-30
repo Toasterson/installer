@@ -1,0 +1,577 @@
+{
+  "system": {
+    "hostname": "illumos-server",
+    "fqdn": "illumos-server.example.com",
+    "timezone": "UTC",
+    "locale": "en_US.UTF-8",
+    "environment": {
+      "EDITOR": "vim",
+      "PAGER": "less -R"
+    }
+  },
+  "storage": {
+    "pools": [
+      {
+        "name": "rpool",
+        "pool_type": "zpool",
+        "devices": [],
+        "properties": {
+          "compression": "lz4",
+          "atime": "off",
+          "redundant_metadata": "most"
+        },
+        "topology": {
+          "data": [
+            {
+              "vdev_type": "mirror",
+              "devices": ["/dev/dsk/c1t0d0s0", "/dev/dsk/c1t1d0s0"]
+            }
+          ],
+          "log": [
+            {
+              "vdev_type": "mirror",
+              "devices": ["/dev/dsk/c2t0d0s0", "/dev/dsk/c2t1d0s0"]
+            }
+          ],
+          "cache": [
+            {
+              "vdev_type": "stripe",
+              "devices": ["/dev/dsk/c3t0d0s0"]
+            }
+          ],
+          "spare": ["/dev/dsk/c4t0d0s0"]
+        }
+      },
+      {
+        "name": "tank",
+        "pool_type": "zpool",
+        "devices": [],
+        "properties": {
+          "compression": "gzip-6",
+          "deduplication": "on",
+          "atime": "off"
+        },
+        "topology": {
+          "data": [
+            {
+              "vdev_type": "raidz2",
+              "devices": [
+                "/dev/dsk/c5t0d0s0",
+                "/dev/dsk/c5t1d0s0",
+                "/dev/dsk/c5t2d0s0",
+                "/dev/dsk/c5t3d0s0",
+                "/dev/dsk/c5t4d0s0",
+                "/dev/dsk/c5t5d0s0"
+              ]
+            }
+          ],
+          "log": [
+            {
+              "vdev_type": "mirror",
+              "devices": ["/dev/dsk/c6t0d0s0", "/dev/dsk/c6t1d0s0"]
+            }
+          ],
+          "cache": [
+            {
+              "vdev_type": "stripe",
+              "devices": ["/dev/dsk/c7t0d0s0", "/dev/dsk/c7t1d0s0"]
+            }
+          ],
+          "spare": ["/dev/dsk/c8t0d0s0", "/dev/dsk/c8t1d0s0"]
+        }
+      }
+    ],
+    "zfs_datasets": [
+      {
+        "name": "rpool/export",
+        "dataset_type": "filesystem",
+        "properties": {
+          "mountpoint": "/export",
+          "compression": "lz4",
+          "atime": "off",
+          "exec": "on"
+        },
+        "quota": "50G",
+        "reservation": "10G",
+        "children": [
+          {
+            "name": "rpool/export/home",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/export/home",
+              "compression": "gzip",
+              "atime": "on"
+            },
+            "quota": "20G",
+            "children": []
+          },
+          {
+            "name": "rpool/export/zones",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/export/zones",
+              "compression": "lz4",
+              "canmount": "on"
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "name": "tank/data",
+        "dataset_type": "filesystem",
+        "properties": {
+          "mountpoint": "/data",
+          "compression": "gzip-6",
+          "checksum": "sha256",
+          "recordsize": "1M"
+        },
+        "quota": "500G",
+        "children": [
+          {
+            "name": "tank/data/databases",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/data/databases",
+              "compression": "lz4",
+              "primarycache": "metadata",
+              "logbias": "throughput",
+              "recordsize": "8K"
+            },
+            "quota": "200G",
+            "reservation": "50G",
+            "children": []
+          },
+          {
+            "name": "tank/data/backups",
+            "dataset_type": "filesystem",
+            "properties": {
+              "mountpoint": "/data/backups",
+              "compression": "gzip-9",
+              "deduplication": "on",
+              "atime": "off"
+            },
+            "quota": "300G",
+            "children": []
+          }
+        ]
+      },
+      {
+        "name": "tank/volumes/vm-disk1",
+        "dataset_type": {
+          "volume": {
+            "size": "100G"
+          }
+        },
+        "properties": {
+          "compression": "off",
+          "checksum": "sha256",
+          "volblocksize": "64K"
+        },
+        "children": []
+      }
+    ],
+    "zfs_snapshots": [
+      {
+        "dataset": "rpool/export/home",
+        "name": "daily-backup",
+        "recursive": true,
+        "properties": {
+          "com.example:backup_type": "daily",
+          "com.example:retention": "30d"
+        }
+      },
+      {
+        "dataset": "tank/data/databases",
+        "name": "pre-maintenance",
+        "recursive": false,
+        "properties": {
+          "com.example:backup_type": "maintenance",
+          "com.example:created_by": "sysconfig"
+        }
+      }
+    ],
+    "zfs_replication": [
+      {
+        "source_dataset": "tank/data/databases",
+        "target": "backup-server:backup/databases",
+        "replication_type": "incremental",
+        "ssh_config": {
+          "user": "backup",
+          "host": "backup-server.example.com",
+          "port": 22,
+          "key_path": "/root/.ssh/backup_rsa"
+        },
+        "exclude_properties": ["mountpoint", "canmount"]
+      }
+    ],
+    "mounts": [
+      {
+        "source": "tmpfs",
+        "target": "/tmp",
+        "fstype": "tmpfs",
+        "options": ["size=4G", "mode=1777"],
+        "persistent": false
+      }
+    ]
+  },
+  "networking": {
+    "interfaces": [
+      {
+        "name": "net0",
+        "addresses": [
+          {
+            "name": "static_v4",
+            "kind": {
+              "static": "192.168.1.100/24"
+            }
+          }
+        ],
+        "gateway": "192.168.1.1",
+        "mtu": 1500,
+        "description": "Management interface"
+      }
+    ],
+    "nameservers": ["1.1.1.1", "8.8.8.8"],
+    "search_domains": ["example.com"],
+    "ntp_servers": ["pool.ntp.org"]
+  },
+  "software": {
+    "update_on_boot": false,
+    "upgrade_on_boot": false,
+    "packages_to_install": [
+      "vim",
+      "git",
+      "tmux",
+      "htop",
+      "developer/gcc-13"
+    ],
+    "repositories": {
+      "ips": {
+        "publishers": [
+          {
+            "name": "solaris",
+            "origin": "https://pkg.oracle.com/solaris/release/",
+            "enabled": true,
+            "preferred": true
+          }
+        ],
+        "signature_verification": true
+      }
+    }
+  },
+  "users": [
+    {
+      "name": "admin",
+      "description": "System Administrator",
+      "shell": "/bin/bash",
+      "groups": ["root", "sys", "adm"],
+      "primary_group": "staff",
+      "home_directory": "/export/home/admin",
+      "uid": 1000,
+      "create_home": true,
+      "sudo": "unrestricted",
+      "authentication": {
+        "password": {
+          "hash": "$6$rounds=4096$salt$hash...",
+          "expire_on_first_login": false
+        },
+        "ssh_keys": [
+          "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFoo... admin@workstation"
+        ]
+      }
+    }
+  ],
+  "containers": {
+    "zones": [
+      {
+        "name": "web-zone",
+        "brand": "sparse",
+        "state": "running",
+        "zonepath": "/export/zones/web-zone",
+        "networks": [
+          {
+            "interface": "net0",
+            "physical": "vnic0",
+            "address": "192.168.1.101/24",
+            "defrouter": "192.168.1.1"
+          }
+        ],
+        "resources": {
+          "cpu_cap": 2.0,
+          "cpu_shares": 100,
+          "physical_memory_cap": "2G",
+          "swap_memory_cap": "4G"
+        },
+        "properties": {
+          "autoboot": "true",
+          "bootargs": "",
+          "pool": "rpool"
+        },
+        "sysconfig": {
+          "system": {
+            "hostname": "web-server",
+            "timezone": "UTC",
+            "locale": "en_US.UTF-8"
+          },
+          "software": {
+            "packages_to_install": [
+              "web/server/apache-24",
+              "database/mysql-80",
+              "runtime/python-39"
+            ]
+          },
+          "users": [
+            {
+              "name": "webadmin",
+              "description": "Web Administrator",
+              "shell": "/bin/bash",
+              "groups": ["webservd"],
+              "home_directory": "/export/home/webadmin",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": [
+                  "ssh-rsa AAAAB3NzaC1yc2E... webadmin@deploy"
+                ]
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "setup_web_service",
+                "content": "#!/bin/bash\n# Configure Apache\nsvcadm enable apache24\necho 'Web service configured'",
+                "interpreter": "/bin/bash",
+                "run_once": true,
+                "timeout": 300
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "db-zone",
+        "brand": "sparse",
+        "state": "running",
+        "zonepath": "/export/zones/db-zone",
+        "networks": [
+          {
+            "interface": "net0",
+            "physical": "vnic1",
+            "address": "192.168.1.102/24",
+            "defrouter": "192.168.1.1"
+          }
+        ],
+        "resources": {
+          "cpu_cap": 4.0,
+          "cpu_shares": 200,
+          "physical_memory_cap": "8G",
+          "swap_memory_cap": "16G"
+        },
+        "properties": {
+          "autoboot": "true",
+          "dataset": "tank/zones/db-zone"
+        },
+        "sysconfig": {
+          "system": {
+            "hostname": "db-server",
+            "timezone": "UTC",
+            "locale": "en_US.UTF-8"
+          },
+          "storage": {
+            "zfs_datasets": [
+              {
+                "name": "tank/zones/db-zone/data",
+                "dataset_type": "filesystem",
+                "properties": {
+                  "mountpoint": "/var/mysql",
+                  "compression": "lz4",
+                  "recordsize": "16K",
+                  "primarycache": "metadata"
+                },
+                "quota": "100G",
+                "reservation": "20G",
+                "children": []
+              }
+            ],
+            "zfs_snapshots": [
+              {
+                "dataset": "tank/zones/db-zone/data",
+                "name": "daily-backup",
+                "recursive": false,
+                "properties": {
+                  "com.example:backup_schedule": "daily"
+                }
+              }
+            ]
+          },
+          "software": {
+            "packages_to_install": [
+              "database/mysql-80/server",
+              "database/mysql-80/client"
+            ]
+          },
+          "users": [
+            {
+              "name": "mysql",
+              "description": "MySQL Database User",
+              "shell": "/bin/false",
+              "groups": ["mysql"],
+              "system_user": true,
+              "home_directory": "/var/mysql",
+              "create_home": false,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": []
+              }
+            },
+            {
+              "name": "dbadmin",
+              "description": "Database Administrator",
+              "shell": "/bin/bash",
+              "groups": ["mysql", "dba"],
+              "home_directory": "/export/home/dbadmin",
+              "create_home": true,
+              "sudo": {
+                "custom": [
+                  "ALL=(mysql) NOPASSWD: /usr/mysql/8.0/bin/mysqld*",
+                  "ALL=(root) NOPASSWD: /usr/sbin/svcadm restart mysql"
+                ]
+              },
+              "authentication": {
+                "ssh_keys": [
+                  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBar... dbadmin@management"
+                ]
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "setup_mysql",
+                "content": "#!/bin/bash\n# Initialize MySQL\n/usr/mysql/8.0/bin/mysql_install_db --user=mysql\nsvcadm enable mysql\necho 'MySQL database initialized and started'",
+                "interpreter": "/bin/bash",
+                "working_directory": "/var/mysql",
+                "environment": {
+                  "MYSQL_HOME": "/var/mysql"
+                },
+                "run_once": true,
+                "output_file": "/var/log/mysql-setup.log",
+                "timeout": 600
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "monitoring-zone",
+        "brand": "lx",
+        "state": "running",
+        "zonepath": "/export/zones/monitoring-zone",
+        "networks": [
+          {
+            "interface": "net0",
+            "physical": "vnic2",
+            "address": "192.168.1.103/24",
+            "defrouter": "192.168.1.1"
+          }
+        ],
+        "resources": {
+          "cpu_cap": 1.0,
+          "physical_memory_cap": "1G",
+          "swap_memory_cap": "2G"
+        },
+        "properties": {
+          "autoboot": "true",
+          "kernel-version": "4.4.0"
+        },
+        "sysconfig": {
+          "system": {
+            "hostname": "monitoring",
+            "timezone": "UTC"
+          },
+          "software": {
+            "repositories": {
+              "apt": {
+                "sources": [
+                  {
+                    "name": "ubuntu-xenial",
+                    "uri": "http://archive.ubuntu.com/ubuntu",
+                    "suites": ["xenial", "xenial-updates"],
+                    "components": ["main", "restricted", "universe", "multiverse"]
+                  }
+                ]
+              }
+            },
+            "packages_to_install": [
+              "prometheus",
+              "grafana",
+              "node-exporter"
+            ]
+          },
+          "users": [
+            {
+              "name": "prometheus",
+              "description": "Prometheus Service User",
+              "shell": "/bin/bash",
+              "groups": ["prometheus"],
+              "system_user": true,
+              "home_directory": "/var/lib/prometheus",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": []
+              }
+            }
+          ],
+          "scripts": {
+            "main_scripts": [
+              {
+                "id": "configure_monitoring",
+                "content": "#!/bin/bash\n# Configure Prometheus\ncat > /etc/prometheus/prometheus.yml << 'EOF'\nglobal:\n  scrape_interval: 15s\nscrape_configs:\n  - job_name: 'prometheus'\n    static_configs:\n      - targets: ['localhost:9090']\n  - job_name: 'node'\n    static_configs:\n      - targets: ['192.168.1.100:9100']\nEOF\nsystemctl enable prometheus\nsystemctl start prometheus\necho 'Monitoring stack configured'",
+                "interpreter": "/bin/bash",
+                "run_once": true,
+                "timeout": 300
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "early_scripts": [
+      {
+        "id": "system_preparation",
+        "content": "#!/bin/bash\necho 'Preparing illumos system...'\n# Create necessary directories\nmkdir -p /var/log/sysconfig\nmkdir -p /export/zones\necho 'System preparation complete'",
+        "interpreter": "/bin/bash",
+        "run_once": true,
+        "timeout": 300
+      }
+    ],
+    "main_scripts": [
+      {
+        "id": "configure_zfs_monitoring",
+        "content": "#!/bin/bash\n# Set up ZFS monitoring\necho '0 */6 * * * root /usr/sbin/zpool scrub rpool' >> /var/spool/cron/crontabs/root\necho '0 */6 * * * root /usr/sbin/zpool scrub tank' >> /var/spool/cron/crontabs/root\necho 'ZFS monitoring configured'",
+        "interpreter": "/bin/bash",
+        "run_once": true,
+        "timeout": 60
+      }
+    ],
+    "late_scripts": [
+      {
+        "id": "finalize_setup",
+        "content": "#!/bin/bash\necho 'Finalizing illumos server setup...'\n# Log completion\necho \"$(date): Advanced illumos server provisioned successfully\" >> /var/log/provisioning.log\necho 'Server ready for production use'",
+        "interpreter": "/bin/bash",
+        "run_once": true,
+        "output_file": "/var/log/finalization.log"
+      }
+    ]
+  },
+  "power_state": {
+    "mode": "noop",
+    "delay": 0,
+    "message": "Advanced illumos server provisioning complete"
+  }
+}

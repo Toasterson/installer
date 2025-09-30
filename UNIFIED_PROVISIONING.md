@@ -23,12 +23,13 @@ A shared Rust crate defining the unified configuration structure:
 ```rust
 struct UnifiedConfig {
     system: Option<SystemConfig>,           // Hostname, timezone, locale
-    storage: Option<StorageConfig>,         // ZFS pools, filesystems, mounts
+    storage: Option<StorageConfig>,         // Advanced ZFS management, pools, datasets, replication
     networking: Option<NetworkingConfig>,   // Interfaces, DNS, routes
     software: Option<SoftwareConfig>,       // Packages, repositories
     users: Vec<UserConfig>,                 // User accounts and authentication
     scripts: Option<ScriptConfig>,          // Boot-time scripts
     integrations: Option<IntegrationConfig>, // Ansible, Puppet, Chef
+    containers: Option<ContainerConfig>,    // Zones, jails, containers with nested config
     power_state: Option<PowerStateConfig>,  // Final power state
 }
 ```
@@ -43,9 +44,9 @@ Orchestrates the provisioning process by:
 ### 3. Enhanced Base Plugins
 
 Platform-specific plugins that understand the unified schema:
-- **illumos Base Plugin**: ZFS, IPS, SMF, zones
-- **FreeBSD Base Plugin**: ZFS, pkg, rc.d, jails  
-- **Linux Base Plugin**: systemd, APT/YUM/APK, containers
+- **illumos Base Plugin**: Advanced ZFS, IPS, SMF, zones with nested sysconfig
+- **FreeBSD Base Plugin**: Advanced ZFS, pkg, rc.d, jails with nested sysconfig
+- **Linux Base Plugin**: systemd, APT/YUM/APK, containers with nested sysconfig
 
 ### 4. Provisioning CLI (`sysconfig-cli`)
 
@@ -102,20 +103,98 @@ Native support for all major Unix package managers:
 }
 ```
 
-### Type-Safe Network Configuration
+### Advanced ZFS Storage Management
 
-Semantic network interface configuration:
+Comprehensive ZFS management with enterprise features:
 
 ```json
 {
-  "networking": {
-    "interfaces": [
+  "storage": {
+    "pools": [
       {
-        "name": "net0",
-        "addresses": [
-          {"name": "dhcp", "kind": "dhcp4"},
-          {"name": "static", "kind": {"static": "192.168.1.100/24"}}
+        "name": "rpool",
+        "pool_type": "zpool",
+        "topology": {
+          "data": [{"vdev_type": "raidz2", "devices": ["/dev/disk1", "/dev/disk2", "/dev/disk3", "/dev/disk4"]}],
+          "log": [{"vdev_type": "mirror", "devices": ["/dev/nvme0", "/dev/nvme1"]}],
+          "cache": [{"vdev_type": "stripe", "devices": ["/dev/ssd0"]}],
+          "spare": ["/dev/spare0"]
+        }
+      }
+    ],
+    "zfs_datasets": [
+      {
+        "name": "rpool/data",
+        "dataset_type": "filesystem",
+        "quota": "500G",
+        "reservation": "50G",
+        "children": [
+          {"name": "rpool/data/databases", "dataset_type": "filesystem", "quota": "200G"}
         ]
+      }
+    ],
+    "zfs_snapshots": [
+      {
+        "dataset": "rpool/data",
+        "name": "daily-backup",
+        "recursive": true,
+        "properties": {"com.example:retention": "30d"}
+      }
+    ],
+    "zfs_replication": [
+      {
+        "source_dataset": "rpool/data",
+        "target": "backup-server:backup/data",
+        "replication_type": "incremental",
+        "ssh_config": {"user": "backup", "host": "backup-server.example.com"}
+      }
+    ]
+  }
+}
+```
+
+### Container Management with Nested Sysconfig
+
+Cross-platform container orchestration with complete nested configuration:
+
+```json
+{
+  "containers": {
+    "zones": [
+      {
+        "name": "web-zone",
+        "brand": "sparse",
+        "state": "running",
+        "zonepath": "/zones/web-zone",
+        "resources": {"cpu_cap": 2.0, "physical_memory_cap": "2G"},
+        "sysconfig": {
+          "system": {"hostname": "web-server"},
+          "software": {"packages_to_install": ["web/server/apache-24"]},
+          "users": [{"name": "webadmin", "sudo": "deny", "authentication": {"ssh_keys": ["ssh-rsa AAAAB3..."]}}]
+        }
+      }
+    ],
+    "jails": [
+      {
+        "name": "db-jail",
+        "hostname": "db.example.com",
+        "ip_addresses": ["192.168.1.52"],
+        "sysconfig": {
+          "storage": {"zfs_datasets": [{"name": "storage/jails/db-jail/data", "quota": "100G"}]},
+          "software": {"packages_to_install": ["mysql80-server"]}
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "web-server",
+        "image": "nginx:1.21-alpine",
+        "runtime": "docker",
+        "sysconfig": {
+          "scripts": {
+            "main_scripts": [{"id": "setup", "content": "#!/bin/sh\necho 'Container configured'"}]
+          }
+        }
       }
     ]
   }
@@ -177,21 +256,24 @@ packages:
 
 ### illumos/Solaris
 - **IPS Publishers**: Configure package publishers with SSL certificates
-- **ZFS Integration**: Create pools, datasets, and configure properties
+- **Advanced ZFS Management**: Complex pool topologies, hierarchical datasets, snapshots, replication
 - **SMF Services**: Enable/disable and configure system services
-- **Zone Management**: Basic zone provisioning support
+- **Zone Management**: Full zone lifecycle management with nested sysconfig using `oxide/zone` crate
+- **Resource Controls**: CPU caps, memory limits, network isolation
 
 ### FreeBSD  
 - **PKG Repositories**: Configure custom repositories with signature verification
-- **ZFS Integration**: Create pools and datasets (same as illumos)
+- **Advanced ZFS Management**: Complex pool topologies, hierarchical datasets, snapshots, replication
 - **RC Scripts**: Enable/disable system services
-- **Jail Management**: Basic jail provisioning support
+- **Jail Management**: Complete jail provisioning with nested sysconfig
+- **Resource Controls**: Jail parameters, networking, and isolation
 
 ### Linux
 - **Multi-Package Manager**: APT, YUM/DNF, APK support
-- **Container Runtime**: Docker, Podman integration
+- **Container Runtime**: Docker, Podman integration with nested sysconfig
 - **systemd Integration**: Service management and configuration
-- **Multiple Filesystems**: ext4, xfs, btrfs support
+- **Volume Management**: Named volumes, bind mounts, and network configuration
+- **Resource Constraints**: CPU and memory limits
 
 ## Usage Examples
 
@@ -245,11 +327,18 @@ sysconfig provision \
 
 ## Configuration Examples
 
-See the following example configurations:
+### Comprehensive Examples
 
-- [`test-unified-provisioning.json`](sysconfig-plugins/test-unified-provisioning.json) - Comprehensive example with all features
+- [`test-unified-provisioning.json`](sysconfig-plugins/test-unified-provisioning.json) - Basic unified provisioning example
 - [`test-cloud-init-example.yaml`](sysconfig-plugins/test-cloud-init-example.yaml) - Cloud-init format for conversion testing
 - [`test-provisioning-simple.kdl`](sysconfig-plugins/test-provisioning-simple.kdl) - Simple KDL format example
+
+### Advanced Examples
+
+- [`examples/advanced-illumos-config.json`](sysconfig-plugins/examples/advanced-illumos-config.json) - Complete illumos server with zones and advanced ZFS
+- [`examples/advanced-freebsd-config.json`](sysconfig-plugins/examples/advanced-freebsd-config.json) - FreeBSD infrastructure with jails and storage
+- [`examples/advanced-linux-config.json`](sysconfig-plugins/examples/advanced-linux-config.json) - Linux container orchestration with Docker
+- [`examples/README.md`](sysconfig-plugins/examples/README.md) - Comprehensive documentation and usage examples
 
 ## Installation
 
@@ -277,6 +366,27 @@ cargo build --release
 
 cd ../sysconfig-cli/
 cargo build --release
+```
+
+### Platform-Specific Dependencies
+
+**illumos/Solaris:**
+```bash
+# Add zone crate for illumos zone management
+# Automatically included for target_os = "illumos"
+```
+
+**FreeBSD:**
+```bash
+# Native jail management using system commands
+# No additional dependencies required
+```
+
+**Linux:**
+```bash
+# Docker/Podman for container management
+sudo apt-get install docker.io podman  # Ubuntu/Debian
+sudo yum install docker podman         # RHEL/CentOS
 ```
 
 ### Installation
@@ -310,6 +420,11 @@ cargo test
 
 # Test configuration conversion
 sysconfig provision --config-file test-unified-provisioning.json --dry-run --run-once
+
+# Test advanced features
+sysconfig provision --config-file examples/advanced-illumos-config.json --dry-run
+sysconfig provision --config-file examples/advanced-freebsd-config.json --dry-run
+sysconfig provision --config-file examples/advanced-linux-config.json --dry-run
 ```
 
 ### Manual Testing
@@ -368,14 +483,29 @@ Licensed under either of Apache License, Version 2.0 or MIT license at your opti
 
 ## Status
 
-**Current State**: Initial implementation complete
-- ✅ Unified configuration schema
+**Current State**: Advanced features implementation complete
+- ✅ Unified configuration schema with container support
 - ✅ Multi-platform base plugins (illumos, FreeBSD, Linux) 
 - ✅ Cloud-init conversion
 - ✅ Multi-source data collection (local, cloud-init, EC2, GCP, Azure)
 - ✅ CLI integration
-- 🚧 Advanced storage management (ZFS)
-- 🚧 Service/container integration
-- 🚧 Network configuration implementation
-- 📋 Comprehensive testing suite
-- 📋 Documentation and examples
+- ✅ Advanced storage management (ZFS) - Complex topologies, datasets, snapshots, replication
+- ✅ Container integration - Zones, jails, Docker with nested sysconfig
+- ✅ Network configuration implementation
+- ✅ Comprehensive example configurations
+- ✅ Documentation and usage examples
+
+**New Advanced Features:**
+- ✅ **Complex ZFS Pool Topologies**: RAIDZ, mirrors, log devices, cache devices, spares
+- ✅ **Hierarchical ZFS Datasets**: Nested structures with quotas, reservations, properties
+- ✅ **ZFS Snapshots & Replication**: Automated snapshots with SSH-based replication
+- ✅ **Cross-Platform Container Management**: Native zone/jail/container support
+- ✅ **Nested Sysconfig**: Complete configuration management within containers
+- ✅ **Resource Management**: CPU, memory, and network resource controls
+- ✅ **Service Orchestration**: Multi-tier application deployment automation
+
+**Future Enhancements:**
+- 📋 Service discovery and load balancing
+- 📋 High availability and clustering
+- 📋 Monitoring and alerting integration
+- 📋 Cloud provider native integration

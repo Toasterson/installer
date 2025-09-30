@@ -42,15 +42,8 @@
         "description": "Management interface"
       }
     ],
-    "nameservers": [
-      "9.9.9.9",
-      "1.1.1.1",
-      "8.8.8.8"
-    ],
-    "search_domains": [
-      "example.com",
-      "test.local"
-    ],
+    "nameservers": ["9.9.9.9", "1.1.1.1", "8.8.8.8"],
+    "search_domains": ["example.com", "test.local"],
     "routes": [
       {
         "destination": "10.0.0.0/8",
@@ -59,32 +52,17 @@
         "metric": 100
       }
     ],
-    "ntp_servers": [
-      "pool.ntp.org",
-      "time.cloudflare.com"
-    ]
+    "ntp_servers": ["pool.ntp.org", "time.cloudflare.com"]
   },
   "software": {
     "update_on_boot": true,
     "upgrade_on_boot": false,
-    "packages_to_install": [
-      "vim",
-      "tmux",
-      "git",
-      "curl",
-      "wget",
-      "htop"
-    ],
-    "packages_to_remove": [
-      "telnet",
-      "ftp"
-    ],
+    "packages_to_install": ["vim", "tmux", "git", "curl", "wget", "htop"],
+    "packages_to_remove": ["telnet", "ftp"],
     "repositories": {
       "apt": {
         "proxy": "http://proxy.example.com:8080",
-        "ppas": [
-          "ppa:deadsnakes/ppa"
-        ],
+        "ppas": ["ppa:deadsnakes/ppa"],
         "sources": [
           {
             "name": "docker",
@@ -168,10 +146,7 @@
           "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... admin@workstation",
           "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFoo... admin@laptop"
         ],
-        "ssh_import_ids": [
-          "gh:admin-github",
-          "lp:admin-launchpad"
-        ]
+        "ssh_import_ids": ["gh:admin-github", "lp:admin-launchpad"]
       }
     },
     {
@@ -307,6 +282,49 @@
         "datacenter": "us-east-1"
       }
     }
+  },
+  "containers": {
+    "zones": [
+      {
+        "name": "test-zone",
+        "brand": "sparse",
+        "state": "running",
+        "zonepath": "/zones/test-zone",
+        "networks": [
+          {
+            "interface": "net0",
+            "physical": "vnic0",
+            "address": "192.168.100.200/24",
+            "defrouter": "192.168.100.1"
+          }
+        ],
+        "resources": {
+          "cpu_cap": 1.0,
+          "physical_memory_cap": "1G"
+        },
+        "properties": {
+          "autoboot": "true"
+        },
+        "sysconfig": {
+          "system": {
+            "hostname": "test-zone-host"
+          },
+          "users": [
+            {
+              "name": "zoneuser",
+              "shell": "/bin/bash",
+              "groups": ["staff"],
+              "home_directory": "/export/home/zoneuser",
+              "create_home": true,
+              "sudo": "deny",
+              "authentication": {
+                "ssh_keys": ["ssh-rsa AAAAB3NzaC1yc2E... zoneuser@test"]
+              }
+            }
+          ]
+        }
+      }
+    ]
   },
   "power_state": {
     "mode": "noop",

@@ -13,7 +13,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-
 /// The root configuration for a cloud instance.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct UnifiedConfig {
@@ -31,6 +30,8 @@ pub struct UnifiedConfig {
     pub scripts: Option<ScriptConfig>,
     /// Configuration for bootstrapping third-party tools like Ansible or Puppet.
     pub integrations: Option<IntegrationConfig>,
+    /// Configuration for containers, zones, and jails.
+    pub containers: Option<ContainerConfig>,
     /// Defines the final power state of the machine after initialization.
     pub power_state: Option<PowerStateConfig>,
 }
@@ -51,6 +52,7 @@ pub struct SystemConfig {
 }
 
 /// Configuration for storage devices, partitions, and filesystems.
+/// Configuration for storage management.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageConfig {
     /// List of filesystems to create or manage.
@@ -59,6 +61,12 @@ pub struct StorageConfig {
     pub pools: Vec<StoragePoolConfig>,
     /// List of mount points and their configuration.
     pub mounts: Vec<MountConfig>,
+    /// List of ZFS datasets with advanced configuration.
+    pub zfs_datasets: Vec<ZfsDatasetConfig>,
+    /// List of ZFS snapshots to create.
+    pub zfs_snapshots: Vec<ZfsSnapshotConfig>,
+    /// ZFS replication configuration.
+    pub zfs_replication: Vec<ZfsReplicationConfig>,
 }
 
 /// Configuration for a filesystem.
@@ -104,6 +112,8 @@ pub struct StoragePoolConfig {
     pub devices: Vec<String>,
     /// Pool-specific properties.
     pub properties: HashMap<String, String>,
+    /// ZFS pool topology configuration.
+    pub topology: Option<ZfsPoolTopology>,
 }
 
 /// Supported storage pool types.
@@ -128,6 +138,121 @@ pub struct MountConfig {
     pub options: Vec<String>,
     /// Whether to persist the mount in fstab/vfstab.
     pub persistent: bool,
+}
+
+/// Advanced ZFS dataset configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZfsDatasetConfig {
+    /// The name of the dataset (pool/dataset/path).
+    pub name: String,
+    /// Dataset type.
+    pub dataset_type: ZfsDatasetType,
+    /// Dataset properties.
+    pub properties: HashMap<String, String>,
+    /// Dataset quotas.
+    pub quota: Option<String>,
+    /// Dataset reservations.
+    pub reservation: Option<String>,
+    /// Child datasets to create.
+    pub children: Vec<ZfsDatasetConfig>,
+}
+
+/// ZFS dataset types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ZfsDatasetType {
+    #[serde(rename = "filesystem")]
+    Filesystem,
+    #[serde(rename = "volume")]
+    Volume { size: String },
+}
+
+/// ZFS pool topology configuration for advanced layouts.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZfsPoolTopology {
+    /// Data vdevs configuration.
+    pub data: Vec<ZfsVdevConfig>,
+    /// Log vdevs configuration.
+    pub log: Vec<ZfsVdevConfig>,
+    /// Cache vdevs configuration.
+    pub cache: Vec<ZfsVdevConfig>,
+    /// Spare vdevs configuration.
+    pub spare: Vec<String>,
+}
+
+/// ZFS vdev configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZfsVdevConfig {
+    /// Vdev type.
+    pub vdev_type: ZfsVdevType,
+    /// List of devices in this vdev.
+    pub devices: Vec<String>,
+}
+
+/// ZFS vdev types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ZfsVdevType {
+    #[serde(rename = "stripe")]
+    Stripe,
+    #[serde(rename = "mirror")]
+    Mirror,
+    #[serde(rename = "raidz")]
+    Raidz,
+    #[serde(rename = "raidz2")]
+    Raidz2,
+    #[serde(rename = "raidz3")]
+    Raidz3,
+}
+
+/// ZFS snapshot configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZfsSnapshotConfig {
+    /// The dataset to snapshot.
+    pub dataset: String,
+    /// Snapshot name.
+    pub name: String,
+    /// Whether to create snapshots recursively.
+    pub recursive: bool,
+    /// Properties to set on the snapshot.
+    pub properties: HashMap<String, String>,
+}
+
+/// ZFS replication configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZfsReplicationConfig {
+    /// Source dataset.
+    pub source_dataset: String,
+    /// Target system and dataset.
+    pub target: String,
+    /// Replication type.
+    pub replication_type: ZfsReplicationType,
+    /// SSH configuration for remote replication.
+    pub ssh_config: Option<SshConfig>,
+    /// Properties to exclude from replication.
+    pub exclude_properties: Vec<String>,
+}
+
+/// ZFS replication types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ZfsReplicationType {
+    #[serde(rename = "send")]
+    Send,
+    #[serde(rename = "incremental")]
+    Incremental,
+    #[serde(rename = "full")]
+    Full,
+}
+
+/// SSH configuration for remote operations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SshConfig {
+    /// SSH username.
+    pub user: String,
+    /// SSH host.
+    pub host: String,
+    /// SSH port.
+    pub port: Option<u16>,
+    /// SSH key path.
+    pub key_path: Option<String>,
 }
 
 /// Configuration for network services and interfaces.
@@ -536,6 +661,202 @@ pub struct PowerStateConfig {
     pub message: Option<String>,
 }
 
+/// Configuration for container management across platforms.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContainerConfig {
+    /// Solaris/illumos zones.
+    pub zones: Vec<ZoneConfig>,
+    /// FreeBSD jails.
+    pub jails: Vec<JailConfig>,
+    /// Linux containers.
+    pub containers: Vec<LinuxContainerConfig>,
+}
+
+/// Solaris/illumos zone configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZoneConfig {
+    /// Zone name.
+    pub name: String,
+    /// Zone brand (sparse, whole-root, etc.).
+    pub brand: String,
+    /// Zone state (configured, installed, running).
+    pub state: ZoneState,
+    /// Zone root path.
+    pub zonepath: String,
+    /// Network configuration.
+    pub networks: Vec<ZoneNetworkConfig>,
+    /// Resource controls.
+    pub resources: Option<ZoneResourceConfig>,
+    /// Zone-specific properties.
+    pub properties: HashMap<String, String>,
+    /// Nested sysconfig configuration for the zone.
+    pub sysconfig: Option<Box<UnifiedConfig>>,
+}
+
+/// Zone states.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ZoneState {
+    #[serde(rename = "configured")]
+    Configured,
+    #[serde(rename = "installed")]
+    Installed,
+    #[serde(rename = "running")]
+    Running,
+}
+
+/// Zone network configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZoneNetworkConfig {
+    /// Network interface name in the zone.
+    pub interface: String,
+    /// Physical interface or VNIC to use.
+    pub physical: String,
+    /// IP address configuration.
+    pub address: Option<String>,
+    /// Default router.
+    pub defrouter: Option<String>,
+}
+
+/// Zone resource controls.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ZoneResourceConfig {
+    /// CPU cap (percentage).
+    pub cpu_cap: Option<f64>,
+    /// CPU shares.
+    pub cpu_shares: Option<u32>,
+    /// Physical memory cap.
+    pub physical_memory_cap: Option<String>,
+    /// Swap memory cap.
+    pub swap_memory_cap: Option<String>,
+}
+
+/// FreeBSD jail configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct JailConfig {
+    /// Jail name.
+    pub name: String,
+    /// Jail ID (optional, auto-assigned if not specified).
+    pub jid: Option<u32>,
+    /// Jail root path.
+    pub path: String,
+    /// Hostname inside the jail.
+    pub hostname: String,
+    /// IP addresses assigned to the jail.
+    pub ip_addresses: Vec<String>,
+    /// Network interfaces.
+    pub interfaces: Vec<String>,
+    /// Jail parameters.
+    pub parameters: HashMap<String, String>,
+    /// Whether to start the jail automatically.
+    pub auto_start: bool,
+    /// Nested sysconfig configuration for the jail.
+    pub sysconfig: Option<Box<UnifiedConfig>>,
+}
+
+/// Linux container configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LinuxContainerConfig {
+    /// Container name.
+    pub name: String,
+    /// Container image.
+    pub image: String,
+    /// Container runtime (docker, podman, containerd).
+    pub runtime: ContainerRuntime,
+    /// Container state (created, running, stopped).
+    pub state: ContainerState,
+    /// Environment variables.
+    pub environment: HashMap<String, String>,
+    /// Volume mounts.
+    pub volumes: Vec<ContainerVolumeConfig>,
+    /// Port mappings.
+    pub ports: Vec<ContainerPortConfig>,
+    /// Network configuration.
+    pub networks: Vec<String>,
+    /// Resource limits.
+    pub resources: Option<ContainerResourceConfig>,
+    /// Nested sysconfig configuration for the container.
+    pub sysconfig: Option<Box<UnifiedConfig>>,
+}
+
+/// Container runtimes.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ContainerRuntime {
+    #[serde(rename = "docker")]
+    Docker,
+    #[serde(rename = "podman")]
+    Podman,
+    #[serde(rename = "containerd")]
+    Containerd,
+}
+
+/// Container states.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ContainerState {
+    #[serde(rename = "created")]
+    Created,
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "stopped")]
+    Stopped,
+}
+
+/// Container volume configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContainerVolumeConfig {
+    /// Host path or volume name.
+    pub source: String,
+    /// Container path.
+    pub target: String,
+    /// Mount type (bind, volume, tmpfs).
+    pub mount_type: ContainerMountType,
+    /// Mount options.
+    pub options: Vec<String>,
+}
+
+/// Container mount types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ContainerMountType {
+    #[serde(rename = "bind")]
+    Bind,
+    #[serde(rename = "volume")]
+    Volume,
+    #[serde(rename = "tmpfs")]
+    Tmpfs,
+}
+
+/// Container port configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContainerPortConfig {
+    /// Host port.
+    pub host_port: u16,
+    /// Container port.
+    pub container_port: u16,
+    /// Protocol (tcp, udp).
+    pub protocol: ContainerProtocol,
+    /// Host IP to bind to.
+    pub host_ip: Option<String>,
+}
+
+/// Container protocols.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ContainerProtocol {
+    #[serde(rename = "tcp")]
+    Tcp,
+    #[serde(rename = "udp")]
+    Udp,
+}
+
+/// Container resource configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ContainerResourceConfig {
+    /// CPU limit (cores).
+    pub cpu_limit: Option<f64>,
+    /// Memory limit.
+    pub memory_limit: Option<String>,
+    /// Memory swap limit.
+    pub memory_swap_limit: Option<String>,
+}
+
 /// Available power states after initialization.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PowerStateMode {
@@ -565,7 +886,7 @@ pub enum ConfigError {
 }
 
 impl UnifiedConfig {
-    /// Create a new, empty unified configuration.
+    /// Create a new empty unified configuration.
     pub fn new() -> Self {
         Self {
             system: None,
@@ -575,6 +896,7 @@ impl UnifiedConfig {
             users: Vec::new(),
             scripts: None,
             integrations: None,
+            containers: None,
             power_state: None,
         }
     }
@@ -585,9 +907,10 @@ impl UnifiedConfig {
         let mut user_names = std::collections::HashSet::new();
         for user in &self.users {
             if !user_names.insert(&user.name) {
-                return Err(ConfigError::ValidationError(
-                    format!("Duplicate user name: {}", user.name)
-                ));
+                return Err(ConfigError::ValidationError(format!(
+                    "Duplicate user name: {}",
+                    user.name
+                )));
             }
         }
 
@@ -596,9 +919,10 @@ impl UnifiedConfig {
             let mut interface_names = std::collections::HashSet::new();
             for interface in &networking.interfaces {
                 if !interface_names.insert(&interface.name) {
-                    return Err(ConfigError::ValidationError(
-                        format!("Duplicate interface name: {}", interface.name)
-                    ));
+                    return Err(ConfigError::ValidationError(format!(
+                        "Duplicate interface name: {}",
+                        interface.name
+                    )));
                 }
             }
         }
@@ -608,9 +932,10 @@ impl UnifiedConfig {
             let mut pool_names = std::collections::HashSet::new();
             for pool in &storage.pools {
                 if !pool_names.insert(&pool.name) {
-                    return Err(ConfigError::ValidationError(
-                        format!("Duplicate storage pool name: {}", pool.name)
-                    ));
+                    return Err(ConfigError::ValidationError(format!(
+                        "Duplicate storage pool name: {}",
+                        pool.name
+                    )));
                 }
             }
         }
@@ -634,6 +959,29 @@ impl UnifiedConfig {
 impl Default for UnifiedConfig {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self {
+            filesystems: Vec::new(),
+            pools: Vec::new(),
+            mounts: Vec::new(),
+            zfs_datasets: Vec::new(),
+            zfs_snapshots: Vec::new(),
+            zfs_replication: Vec::new(),
+        }
+    }
+}
+
+impl Default for ContainerConfig {
+    fn default() -> Self {
+        Self {
+            zones: Vec::new(),
+            jails: Vec::new(),
+            containers: Vec::new(),
+        }
     }
 }
 
