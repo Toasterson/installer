@@ -1,0 +1,94 @@
+# Development sysconfig configuration
+# Main daemon configuration for development and testing
+
+[daemon]
+# Socket path for main sysconfig daemon
+socket_path = "/var/run/sysconfig.sock"
+# Log level for development
+log_level = "debug"
+# Enable development features
+development_mode = true
+
+# Plugin discovery and management
+[plugins]
+# Path where plugin binaries are located
+path = "/repo/sysconfig-plugins/target/release"
+# Auto-discover plugins in the path
+auto_discover = true
+# Directory for plugin sockets
+socket_dir = "/var/run/sysconfig"
+# Plugin timeout settings
+connect_timeout = 30
+request_timeout = 60
+
+# Development logging configuration
+[logging]
+level = "debug"
+output = "console"
+target = "sysconfig"
+# Also log to file for debugging
+file = "/var/log/sysconfig.log"
+# Enable structured logging
+format = "json"
+
+# Configuration sources for development
+[config]
+# Primary config from mounted repo for testing
+config_file = "/repo/sysconfig-plugins/test-provisioning-config.kdl"
+# Backup local config
+local_config = "/etc/sysconfig/local.kdl"
+# Watch for config file changes
+watch_config = true
+
+# Development-specific settings
+[development]
+enabled = true
+# Reload configuration on file changes
+reload_on_change = true
+# Directories to watch for changes
+watch_directories = [
+    "/repo/sysconfig-plugins",
+    "/repo/sysconfig-provisioning",
+    "/repo/sysconfig"
+]
+# Enable hot reload of plugins
+hot_reload_plugins = true
+# Validation mode - strict validation in development
+validation_mode = "strict"
+
+# Network settings for development
+[network]
+# Bind address for development
+bind_address = "127.0.0.1"
+# Enable metrics endpoint for monitoring
+enable_metrics = true
+metrics_port = 9090
+
+# Plugin-specific development settings
+[plugin_settings]
+# illumos base plugin configuration
+illumos_base = {
+    socket_path = "/var/run/sysconfig/illumos-base.sock",
+    config_file = "/repo/sysconfig-plugins/test-provisioning-config.kdl",
+    log_level = "debug"
+}
+
+# Provisioning settings
+[provisioning]
+# Enable dry-run mode for development
+dry_run = false
+# Config file for provisioning CLI
+config_file = "/repo/sysconfig-plugins/test-provisioning-simple.kdl"
+# Sources to check for configuration
+sources = ["local", "cloud-init", "metadata"]
+# Timeout for provisioning operations
+timeout = 300
+
+# Security settings for development
+[security]
+# Allow insecure connections for development
+allow_insecure = true
+# Skip certificate validation
+skip_tls_verify = true
+# Enable debug endpoints
+enable_debug_endpoints = true

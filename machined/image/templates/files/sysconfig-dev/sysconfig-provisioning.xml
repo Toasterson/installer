@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='sysconfig-provisioning'>
+
+    <service name='system/sysconfig-provisioning' type='service' version='1'>
+        <create_default_instance enabled='true' />
+        <single_instance />
+
+        <!-- Run after sysconfig and plugins are up -->
+        <dependency
+            name='sysconfig'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/installer/sysconfig:default' />
+        </dependency>
+
+        <dependency
+            name='illumos-base-plugin'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/sysconfig/illumos-base:default' />
+        </dependency>
+
+        <!-- Depend on 9P mount for development configs -->
+        <dependency
+            name='dev-9p-mount'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/dev-9p-mount:default' />
+        </dependency>
+
+        <!-- Network should be available for provisioning -->
+        <dependency
+            name='network'
+            grouping='require_all'
+            restart_on='restart'
+            type='service'
+        >
+            <service_fmri value='svc:/milestone/network:default' />
+        </dependency>
+
+        <exec_method
+            type='method'
+            name='start'
+            exec='/usr/lib/sysconfig-provisioning --config /repo/sysconfig-plugins/test-provisioning-simple.kdl --socket /var/run/sysconfig.sock'
+            timeout_seconds='300'
+        />
+
+        <exec_method
+            type='method'
+            name='stop'
+            exec=':true'
+            timeout_seconds='60'
+        />
+
+        <property_group name='startd' type='framework'>
+            <propval name='duration' type='astring' value='transient' />
+        </property_group>
+
+        <stability value='Unstable' />
+
+        <template>
+            <common_name>
+                <loctext xml:lang='C'>SysConfig Provisioning CLI Service</loctext>
+            </common_name>
+            <description>
+                <loctext xml:lang='C'>One-shot provisioning CLI for system configuration from cloud-init, local configs, and metadata sources</loctext>
+            </description>
+        </template>
+    </service>
+
+</service_bundle>
+<!-- vim: set ts=2 sts=2 sw=2 et: -->

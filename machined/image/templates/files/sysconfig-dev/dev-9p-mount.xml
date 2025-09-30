@@ -1,0 +1,73 @@
+<?xml version="1.0" ?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='dev-9p-mount'>
+
+    <service name='system/dev-9p-mount' type='service' version='1'>
+        <create_default_instance enabled='true' />
+        <single_instance />
+
+        <!-- File systems should be mounted after root -->
+        <dependency
+            name='fs-root'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/filesystem/root' />
+        </dependency>
+
+        <!-- Devices should be configured -->
+        <dependency
+            name='devices'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/milestone/devices' />
+        </dependency>
+
+        <!-- Block sysconfig and plugins until we've mounted the 9P filesystem -->
+        <dependent name='sysconfig' grouping='optional_all' restart_on='none'>
+            <service_fmri value='svc:/system/installer/sysconfig' />
+        </dependent>
+        <dependent name='illumos-base-plugin' grouping='optional_all' restart_on='none'>
+            <service_fmri value='svc:/system/sysconfig/illumos-base' />
+        </dependent>
+        <dependent name='sysconfig-provisioning' grouping='optional_all' restart_on='none'>
+            <service_fmri value='svc:/system/sysconfig-provisioning' />
+        </dependent>
+
+        <exec_method
+            type='method'
+            name='start'
+            exec='/lib/svc/method/dev-9p-mount start'
+            timeout_seconds='30'
+        />
+
+        <exec_method
+            type='method'
+            name='stop'
+            exec='/lib/svc/method/dev-9p-mount stop'
+            timeout_seconds='10'
+        />
+
+        <property_group name='startd' type='framework'>
+            <propval name='duration' type='astring' value='transient' />
+        </property_group>
+
+        <stability value='Unstable' />
+
+        <template>
+            <common_name>
+                <loctext xml:lang='C'>Development 9P Mount</loctext>
+            </common_name>
+            <description>
+                <loctext
+                    xml:lang='C'
+                >Mounts 9P filesystem for development</loctext>
+            </description>
+        </template>
+    </service>
+
+</service_bundle>
+<!-- vim: set ts=2 sts=2 sw=2 et: -->

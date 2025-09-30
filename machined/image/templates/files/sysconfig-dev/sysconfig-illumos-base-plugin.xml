@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+<service_bundle type='manifest' name='sysconfig-illumos-base-plugin'>
+
+    <service name='system/sysconfig/illumos-base' type='service' version='1'>
+        <create_default_instance enabled='true' />
+        <single_instance />
+
+        <!-- Depend on main sysconfig daemon -->
+        <dependency
+            name='sysconfig'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/installer/sysconfig:default' />
+        </dependency>
+
+        <!-- Depend on 9P mount for development configs -->
+        <dependency
+            name='dev-9p-mount'
+            grouping='require_all'
+            restart_on='none'
+            type='service'
+        >
+            <service_fmri value='svc:/system/dev-9p-mount:default' />
+        </dependency>
+
+        <exec_method
+            type='method'
+            name='start'
+            exec='/usr/lib/sysconfig/plugins/illumos-base-plugin --socket /var/run/sysconfig/illumos-base.sock --config /repo/sysconfig-plugins/test-provisioning-config.kdl'
+            timeout_seconds='60'
+        />
+
+        <exec_method
+            type='method'
+            name='stop'
+            exec=':kill'
+            timeout_seconds='60'
+        />
+
+        <property_group name='startd' type='framework'>
+            <propval name='duration' type='astring' value='child' />
+        </property_group>
+
+        <stability value='Unstable' />
+
+        <template>
+            <common_name>
+                <loctext xml:lang='C'>SysConfig illumos Base Plugin</loctext>
+            </common_name>
+            <description>
+                <loctext xml:lang='C'>illumos base system plugin for SysConfig system configuration daemon</loctext>
+            </description>
+        </template>
+    </service>
+
+</service_bundle>
+<!-- vim: set ts=2 sts=2 sw=2 et: -->

@@ -1,0 +1,33 @@
+#!/bin/bash
+#
+# Development 9P mount script
+# This ensures the 9P filesystem is mounted before sysconfig starts
+#
+
+set -o errexit
+set -o pipefail
+
+case "$1" in
+start)
+    # Check if 9P filesystem is already mounted
+    if ! mount | grep -q '/repo.*9pfs'; then
+        echo "Mounting 9P filesystem at /repo"
+        mount -F 9pfs -o tag=repo,trans=virtio,version=9p2000.L repo /repo
+    else
+        echo "9P filesystem already mounted at /repo"
+    fi
+    ;;
+stop)
+    # Unmount if mounted
+    if mount | grep -q '/repo.*9pfs'; then
+        echo "Unmounting 9P filesystem at /repo"
+        umount /repo
+    fi
+    ;;
+*)
+    echo "Usage: $0 {start|stop}"
+    exit 1
+    ;;
+esac
+
+exit 0

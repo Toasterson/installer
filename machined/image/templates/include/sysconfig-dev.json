@@ -1,0 +1,133 @@
+{
+  "steps": [
+    {
+      "t": "ensure_directory",
+      "dir": "/repo",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_directory",
+      "dir": "/etc/sysconfig",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_directory",
+      "dir": "/var/run/sysconfig",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_directory",
+      "dir": "/usr/lib/sysconfig",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_directory",
+      "dir": "/usr/lib/sysconfig/plugins",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/method/dev-9p-mount",
+      "src": "sysconfig-dev/dev-9p-mount",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/manifest/system/dev-9p-mount.xml",
+      "src": "sysconfig-dev/dev-9p-mount.xml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/usr/lib/sysconfig/sysconfig",
+      "extsrc": "sysconfig/target/release/sysconfig",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/manifest/system/sysconfig.xml",
+      "extsrc": "sysconfig/image/templates/files/sysconfig-smf-service.xml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/usr/lib/sysconfig/plugins/illumos-base-plugin",
+      "extsrc": "sysconfig-plugins/target/release/illumos-base-plugin",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/usr/lib/sysconfig-provisioning",
+      "extsrc": "sysconfig-provisioning/target/release/provisioning-plugin",
+      "owner": "root",
+      "group": "root",
+      "mode": "755"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/manifest/system/sysconfig-illumos-base-plugin.xml",
+      "src": "sysconfig-dev/sysconfig-illumos-base-plugin.xml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/lib/svc/manifest/system/sysconfig-provisioning.xml",
+      "src": "sysconfig-dev/sysconfig-provisioning.xml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/etc/sysconfig.toml",
+      "src": "sysconfig-dev/sysconfig.toml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    },
+
+    {
+      "t": "ensure_file",
+      "file": "/etc/sysconfig/dev-test.kdl",
+      "src": "sysconfig-dev/dev-test.kdl",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    }
+  ]
+}

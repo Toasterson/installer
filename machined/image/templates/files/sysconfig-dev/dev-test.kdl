@@ -1,0 +1,209 @@
+// Development test configuration
+// This file provides a basic test config when repo configs aren't available
+
+// Set the development VM hostname
+hostname "sysconfig-dev-vm"
+
+// Basic DNS configuration for development
+nameserver "8.8.8.8"
+nameserver "1.1.1.1"
+nameserver "9.9.9.9"
+
+// DNS search domains
+search "dev.local"
+search "test.local"
+
+// Primary network interface - DHCP configuration for development
+interface "net0" {
+    address name="v4-dhcp" kind="dhcp4"
+    address name="v6-auto" kind="addrconf"
+    description "Primary development interface"
+    mtu 1500
+}
+
+// Management interface - static IP for consistent access
+interface "net1" {
+    address name="v4-mgmt" kind="static" "192.168.100.10/24"
+    gateway "192.168.100.1"
+    description "Management interface for development"
+    mtu 1500
+}
+
+// Loopback interface (always present)
+interface "lo0" {
+    address name="v4-loop" kind="static" "127.0.0.1/8"
+    address name="v6-loop" kind="static" "::1/128"
+    description "Loopback interface"
+}
+
+// Basic route configuration
+route "0.0.0.0/0" {
+    gateway "192.168.100.1"
+    interface "net1"
+    metric 100
+}
+
+// NTP servers for development
+ntp-server "pool.ntp.org"
+ntp-server "time.google.com"
+
+// Timezone configuration
+timezone "UTC"
+
+// Development user configuration
+users {
+    user "dev" {
+        uid 1000
+        group "staff"
+        groups "wheel" "adm" "sys"
+        home "/home/dev"
+        shell "/bin/bash"
+        gecos "Development User"
+        create-home true
+        sudo true
+
+        // Development SSH keys (example - replace with real keys)
+        ssh-authorized-keys "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... dev@development"
+    }
+
+    user "testuser" {
+        uid 2000
+        group "users"
+        groups "staff"
+        home "/home/testuser"
+        shell "/bin/bash"
+        gecos "Test User"
+        create-home true
+        sudo false
+    }
+}
+
+// SSH configuration for development
+ssh {
+    // Allow root login for development
+    permit-root-login "yes"
+    password-authentication true
+    pubkey-authentication true
+
+    // Development SSH keys for root
+    authorized-keys "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... root@dev"
+}
+
+// Services to enable for development
+services {
+    enable "ssh"
+    enable "ntp"
+    enable "nscd"
+    enable "dns/client"
+
+    // Disable unnecessary services
+    disable "telnet"
+    disable "ftp"
+    disable "rlogin"
+}
+
+// Development file management
+files {
+    file "/etc/motd" {
+        ensure "present"
+        content """
+        ############################################################
+        #                                                          #
+        #  SysConfig Development VM                                #
+        #  Repository mounted at /repo                             #
+        #                                                          #
+        ############################################################
+        """
+        mode "0644"
+        owner "root"
+        group "root"
+    }
+
+    file "/root/.profile.local" {
+        ensure "present"
+        content """
+        # Development environment setup
+        export PS1='[\\u@sysconfig-dev \\W]\\$ '
+        export EDITOR=vi
+        export PAGER=less
+
+        # Development aliases
+        alias ll='ls -la'
+        alias la='ls -la'
+        alias l='ls -l'
+        alias ..='cd ..'
+        alias ...='cd ../..'
+
+        # SysConfig development helpers
+        alias sysconfig-status='svcs -l svc:/system/installer/sysconfig'
+        alias plugins-status='svcs -l svc:/system/sysconfig/illumos-base'
+        alias provisioning-status='svcs -l svc:/system/sysconfig-provisioning'
+        alias mount-status='mount | grep 9pfs'
+        alias repo-ls='ls -la /repo'
+
+        # Development paths
+        export PATH="/repo/sysconfig/target/release:/repo/sysconfig-plugins/target/release:/repo/sysconfig-provisioning/target/release:$PATH"
+
+        echo "SysConfig Development Environment"
+        echo "Repository: /repo"
+        echo "Config: /repo/sysconfig-plugins/test-provisioning-*.kdl"
+        """
+        mode "0644"
+        owner "root"
+        group "root"
+    }
+
+    file "/etc/sysconfig/README.md" {
+        ensure "present"
+        content """
+        # SysConfig Development Configuration
+
+        This directory contains local sysconfig configuration files for development.
+
+        ## Files
+        - `local.kdl` - Local development configuration
+        - `dev-test.kdl` - Basic test configuration (this file's source)
+
+        ## Development Workflow
+        1. Primary configs are loaded from `/repo/sysconfig-plugins/test-provisioning-*.kdl`
+        2. Local configs in this directory provide fallback/override capability
+        3. Edit configs in the mounted repo for live testing
+        4. Restart services to apply changes:
+           - `svcadm restart svc:/system/installer/sysconfig`
+           - `svcadm restart svc:/system/sysconfig/illumos-base`
+           - `svcadm restart svc:/system/sysconfig-provisioning`
+
+        ## Debugging
+        - View logs: `tail -f /var/svc/log/system-*sysconfig*`
+        - Check service status: `svcs -xv | grep sysconfig`
+        - Check 9P mount: `mount | grep 9pfs`
+        """
+        mode "0644"
+        owner "root"
+        group "root"
+    }
+}
+
+// Package management for development
+packages {
+    ensure "vim"
+    ensure "curl"
+    ensure "wget"
+    ensure "git"
+    ensure "tmux"
+    ensure "htop"
+}
+
+// Development metadata
+metadata {
+    environment "development"
+    purpose "sysconfig-testing"
+    created-by "sysconfig-dev-template"
+    repo-mount "/repo"
+
+    tags {
+        type "development"
+        component "sysconfig"
+        purpose "testing"
+    }
+}
