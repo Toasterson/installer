@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[cfg(target_os = "illumos")]
-use zone::{Brand, Zone, ZoneBuilder, ZoneState};
+use zone::{Adm, AttributeValue, Config, Zone};
 
 use clap::Parser;
 use sysconfig_plugins::tasks::files::Files;
@@ -1416,82 +1416,93 @@ impl IllumosBasePlugin {
             info!("DRY-RUN: Would configure zone {}", zone_config.name);
         } else {
             // Check if zone exists
-            let existing_zone = Zone::find(&zone_config.name)
-                .map_err(|e| format!("failed to check zone existence: {}", e))?;
+            // Check if zone exists by trying to create a config for it
+            let zone_exists = Config::new(&zone_config.name).is_ok();
 
-            if existing_zone.is_none() {
-                // Create new zone using ZoneBuilder
-                let mut builder = ZoneBuilder::new(&zone_config.name);
+            if !zone_exists {
+                // Create new zone configuration
+                let mut config = Config::create(&zone_config.name, &zone_config.zonepath)
+                    .map_err(|e| format!("failed to create zone config: {}", e))?;
 
                 // Set brand
-                let brand = match zone_config.brand.as_str() {
-                    "sparse" => Brand::Sparse,
-                    "whole" => Brand::Whole,
-                    "lx" => Brand::Lx,
-                    "bhyve" => Brand::Bhyve,
-                    "kvm" => Brand::Kvm,
-                    _ => Brand::Sparse, // default fallback
-                };
-                builder = builder.brand(brand);
-
-                // Set zonepath
-                builder = builder.zonepath(&zone_config.zonepath);
+                config
+                    .set_brand(&zone_config.brand)
+                    .map_err(|e| format!("failed to set brand: {}", e))?;
 
                 // Add network configurations
                 for network in &zone_config.networks {
-                    // Create network interface configuration
-                    let mut net_config = zone::Net::new();
-                    net_config.physical = Some(network.physical.clone());
+                    let net_scope = config
+                        .add_net()
+                        .map_err(|e| format!("failed to add network: {}", e))?;
+
+                    net_scope
+                        .set_physical(&network.physical)
+                        .map_err(|e| format!("failed to set physical interface: {}", e))?;
 
                     if let Some(address) = &network.address {
-                        net_config.address = Some(address.clone());
+                        net_scope
+                            .set_address(address)
+                            .map_err(|e| format!("failed to set address: {}", e))?;
                     }
 
                     if let Some(defrouter) = &network.defrouter {
-                        net_config.defrouter = Some(defrouter.clone());
+                        net_scope
+                            .set_defrouter(defrouter)
+                            .map_err(|e| format!("failed to set defrouter: {}", e))?;
                     }
-
-                    builder = builder.net(net_config);
                 }
 
                 // Add resource controls
                 if let Some(resources) = &zone_config.resources {
                     if let Some(cpu_cap) = resources.cpu_cap {
-                        let mut capped_cpu = zone::CappedCpu::new();
-                        capped_cpu.ncpus = Some(cpu_cap);
-                        builder = builder.capped_cpu(capped_cpu);
+                        let capped_cpu_scope = config
+                            .add_capped_cpu()
+                            .map_err(|e| format!("failed to add capped cpu: {}", e))?;
+                        capped_cpu_scope
+                            .set_ncpus(&cpu_cap.to_string())
+                            .map_err(|e| format!("failed to set ncpus: {}", e))?;
                     }
 
                     if let Some(memory_cap) = &resources.physical_memory_cap {
-                        let mut capped_memory = zone::CappedMemory::new();
-                        capped_memory.physical = Some(memory_cap.clone());
+                        let capped_memory_scope = config
+                            .add_capped_memory()
+                            .map_err(|e| format!("failed to add capped memory: {}", e))?;
+                        capped_memory_scope
+                            .set_physical(memory_cap)
+                            .map_err(|e| format!("failed to set physical memory: {}", e))?;
+
                         if let Some(swap_cap) = &resources.swap_memory_cap {
-                            capped_memory.swap = Some(swap_cap.clone());
+                            capped_memory_scope
+                                .set_swap(swap_cap)
+                                .map_err(|e| format!("failed to set swap memory: {}", e))?;
                         }
-                        builder = builder.capped_memory(capped_memory);
                     }
                 }
 
                 // Add custom properties as attributes
                 for (key, value) in &zone_config.properties {
-                    let attr = zone::Attr {
-                        name: key.clone(),
-                        value: value.clone(),
-                        attr_type: zone::AttrType::String,
-                    };
-                    builder = builder.attr(attr);
+                    let attr_scope = config
+                        .add_attr()
+                        .map_err(|e| format!("failed to add attribute: {}", e))?;
+                    attr_scope
+                        .set_name(key)
+                        .map_err(|e| format!("failed to set attribute name: {}", e))?;
+                    attr_scope
+                        .set_value(&AttributeValue::String(value.clone()))
+                        .map_err(|e| format!("failed to set attribute value: {}", e))?;
                 }
 
-                // Create the zone
-                let zone = builder
-                    .create()
-                    .map_err(|e| format!("failed to create zone {}: {}", zone_config.name, e))?;
+                // Commit the zone configuration
+                config
+                    .commit()
+                    .map_err(|e| format!("failed to commit zone config: {}", e))?;
 
                 // Install the zone if needed
                 match zone_config.state {
                     sysconfig_config_schema::ZoneState::Installed
                     | sysconfig_config_schema::ZoneState::Running => {
-                        zone.install(&[]).map_err(|e| {
+                        let mut adm = Adm::new(&zone_config.name);
+                        adm.install(&[]).map_err(|e| {
                             format!("failed to install zone {}: {}", zone_config.name, e)
                         })?;
                     }
@@ -1500,26 +1511,33 @@ impl IllumosBasePlugin {
 
                 // Boot the zone if needed
                 if let sysconfig_config_schema::ZoneState::Running = zone_config.state {
-                    zone.boot(&[])
+                    let mut adm = Adm::new(&zone_config.name);
+                    adm.boot(&[])
                         .map_err(|e| format!("failed to boot zone {}: {}", zone_config.name, e))?;
                 }
             } else {
-                let zone = existing_zone.unwrap();
+                // Zone exists, check current state and handle transitions
+                let mut adm = Adm::new(&zone_config.name);
+                let zones = adm
+                    .list()
+                    .map_err(|e| format!("failed to list zones: {}", e))?;
 
-                // Handle state transitions for existing zone
-                let current_state = zone
-                    .state()
-                    .map_err(|e| format!("failed to get zone state: {}", e))?;
+                let current_zone = zones
+                    .iter()
+                    .find(|z| z.name() == zone_config.name)
+                    .ok_or_else(|| format!("zone {} not found", zone_config.name))?;
+
+                let current_state = current_zone.state();
 
                 match (current_state, &zone_config.state) {
-                    (ZoneState::Configured, sysconfig_config_schema::ZoneState::Installed)
-                    | (ZoneState::Configured, sysconfig_config_schema::ZoneState::Running) => {
-                        zone.install(&[]).map_err(|e| {
+                    (zone::State::Configured, sysconfig_config_schema::ZoneState::Installed)
+                    | (zone::State::Configured, sysconfig_config_schema::ZoneState::Running) => {
+                        adm.install(&[]).map_err(|e| {
                             format!("failed to install zone {}: {}", zone_config.name, e)
                         })?;
                     }
-                    (ZoneState::Installed, sysconfig_config_schema::ZoneState::Running) => {
-                        zone.boot(&[]).map_err(|e| {
+                    (zone::State::Installed, sysconfig_config_schema::ZoneState::Running) => {
+                        adm.boot(&[]).map_err(|e| {
                             format!("failed to boot zone {}: {}", zone_config.name, e)
                         })?;
                     }
@@ -1556,6 +1574,7 @@ impl IllumosBasePlugin {
         ))
     }
 
+    #[cfg(target_os = "illumos")]
     async fn finish_zone_config(
         &self,
         zone_config: &sysconfig_config_schema::ZoneConfig,
@@ -1580,6 +1599,7 @@ impl IllumosBasePlugin {
         Ok(())
     }
 
+    #[cfg(target_os = "illumos")]
     async fn apply_nested_sysconfig(
         &self,
         zone_name: &str,
@@ -1600,58 +1620,25 @@ impl IllumosBasePlugin {
             .to_json()
             .map_err(|e| format!("failed to serialize nested config: {}", e))?;
 
-        // Create a temporary file with the nested config
-        let temp_file = format!("/tmp/zone_{}_nested_config.json", zone_name);
-        std::fs::write(&temp_file, config_json)
-            .map_err(|e| format!("failed to write nested config file: {}", e))?;
+        // Write the nested config directly to the zone's sysconfig directory
+        let zone_config_dir = format!("/zones/{}/root/etc/sysconfig", zone_name);
+        let zone_config_path = format!("{}/provisioning-config.json", zone_config_dir);
 
-        // Copy the config file to the zone
-        let zone_config_path =
-            format!("/zones/{}/root/etc/sysconfig/nested-config.json", zone_name);
-        let output = std::process::Command::new("/usr/bin/cp")
-            .args(&[&temp_file, &zone_config_path])
-            .output()
-            .map_err(|e| format!("failed to copy config to zone: {}", e))?;
+        // Ensure the sysconfig directory exists in the zone
+        std::fs::create_dir_all(&zone_config_dir)
+            .map_err(|e| format!("failed to create sysconfig directory in zone: {}", e))?;
 
-        if !output.status.success() {
-            return Err(format!(
-                "failed to copy nested config to zone {}: {}",
-                zone_name,
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        // Execute sysconfig provisioning inside the zone
-        let output = std::process::Command::new("/usr/sbin/zlogin")
-            .args(&[
-                zone_name,
-                "/usr/local/bin/sysconfig",
-                "provision",
-                "--config-file",
-                "/etc/sysconfig/nested-config.json",
-                "--run-once",
-            ])
-            .output()
-            .map_err(|e| format!("failed to execute nested provisioning: {}", e))?;
-
-        if !output.status.success() {
-            return Err(format!(
-                "failed to apply nested config in zone {}: {}",
-                zone_name,
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-
-        // Clean up temporary file
-        let _ = std::fs::remove_file(&temp_file);
+        // Write the config file directly to the zone
+        std::fs::write(&zone_config_path, config_json)
+            .map_err(|e| format!("failed to write nested config to zone: {}", e))?;
 
         task_changes.push(TaskChange {
             change_type: TaskChangeType::Update,
             path: format!("zone:{}:nested-config", zone_name),
             old_value: None,
             new_value: Some(serde_json::json!({
-                "applied": true,
-                "config_path": "/etc/sysconfig/nested-config.json"
+                "config_file_placed": true,
+                "config_path": "/etc/sysconfig/provisioning-config.json"
             })),
             verbose: false,
         });
