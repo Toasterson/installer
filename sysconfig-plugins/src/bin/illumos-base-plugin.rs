@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 #[cfg(target_os = "illumos")]
-use zone::{Adm, AttributeValue, Config, Zone};
+use zone::{
+    Adm, Attr, AttributeValue, CappedCpu, CappedMemory, Config, CreationOptions, Net, State,
+};
 
 use clap::Parser;
 use sysconfig_plugins::tasks::files::Files;
@@ -1417,92 +1419,73 @@ impl IllumosBasePlugin {
         } else {
             // Check if zone exists
             // Check if zone exists by trying to create a config for it
-            let zone_exists = Config::new(&zone_config.name).is_ok();
+            // Check if zone exists by listing all zones
+            let zones = Adm::list_blocking().map_err(|e| format!("failed to list zones: {}", e))?;
+            let zone_exists = zones.iter().any(|z| z.name() == zone_config.name);
 
             if !zone_exists {
                 // Create new zone configuration
-                let mut config = Config::create(&zone_config.name, &zone_config.zonepath)
-                    .map_err(|e| format!("failed to create zone config: {}", e))?;
+                let mut config = Config::create(&zone_config.name, false, CreationOptions::Default);
+
+                // Set zonepath
+                config.get_global().set_zonepath(&zone_config.zonepath);
 
                 // Set brand
-                config
-                    .set_brand(&zone_config.brand)
-                    .map_err(|e| format!("failed to set brand: {}", e))?;
+                config.get_global().set_brand(&zone_config.brand);
 
                 // Add network configurations
                 for network in &zone_config.networks {
-                    let net_scope = config
-                        .add_net()
-                        .map_err(|e| format!("failed to add network: {}", e))?;
-
-                    net_scope
-                        .set_physical(&network.physical)
-                        .map_err(|e| format!("failed to set physical interface: {}", e))?;
-
-                    if let Some(address) = &network.address {
-                        net_scope
-                            .set_address(address)
-                            .map_err(|e| format!("failed to set address: {}", e))?;
-                    }
-
-                    if let Some(defrouter) = &network.defrouter {
-                        net_scope
-                            .set_defrouter(defrouter)
-                            .map_err(|e| format!("failed to set defrouter: {}", e))?;
-                    }
+                    let net = Net {
+                        physical: Some(network.physical.clone()),
+                        address: network.address.clone(),
+                        allowed_address: None,
+                        defrouter: network.defrouter.clone(),
+                        global_nic: None,
+                        mac_addr: None,
+                        vlan_id: None,
+                    };
+                    config.add_net(&net);
                 }
 
                 // Add resource controls
                 if let Some(resources) = &zone_config.resources {
                     if let Some(cpu_cap) = resources.cpu_cap {
-                        let capped_cpu_scope = config
-                            .add_capped_cpu()
-                            .map_err(|e| format!("failed to add capped cpu: {}", e))?;
-                        capped_cpu_scope
-                            .set_ncpus(&cpu_cap.to_string())
-                            .map_err(|e| format!("failed to set ncpus: {}", e))?;
+                        let capped_cpu = CappedCpu {
+                            ncpus: Some(cpu_cap.to_string()),
+                        };
+                        config.add_capped_cpu(&capped_cpu);
                     }
 
                     if let Some(memory_cap) = &resources.physical_memory_cap {
-                        let capped_memory_scope = config
-                            .add_capped_memory()
-                            .map_err(|e| format!("failed to add capped memory: {}", e))?;
-                        capped_memory_scope
-                            .set_physical(memory_cap)
-                            .map_err(|e| format!("failed to set physical memory: {}", e))?;
-
-                        if let Some(swap_cap) = &resources.swap_memory_cap {
-                            capped_memory_scope
-                                .set_swap(swap_cap)
-                                .map_err(|e| format!("failed to set swap memory: {}", e))?;
-                        }
+                        let capped_memory = CappedMemory {
+                            physical: Some(memory_cap.clone()),
+                            swap: resources.swap_memory_cap.clone(),
+                            locked: None,
+                        };
+                        config.add_capped_memory(&capped_memory);
                     }
                 }
 
                 // Add custom properties as attributes
                 for (key, value) in &zone_config.properties {
-                    let attr_scope = config
-                        .add_attr()
-                        .map_err(|e| format!("failed to add attribute: {}", e))?;
-                    attr_scope
-                        .set_name(key)
-                        .map_err(|e| format!("failed to set attribute name: {}", e))?;
-                    attr_scope
-                        .set_value(&AttributeValue::String(value.clone()))
-                        .map_err(|e| format!("failed to set attribute value: {}", e))?;
+                    let attr = Attr {
+                        name: key.clone(),
+                        value: AttributeValue::String(value.clone()),
+                    };
+                    config.add_attr(&attr);
                 }
 
-                // Commit the zone configuration
+                // Run the zone configuration
                 config
-                    .commit()
-                    .map_err(|e| format!("failed to commit zone config: {}", e))?;
+                    .run_blocking()
+                    .map_err(|e| format!("failed to create zone config: {}", e))?;
 
                 // Install the zone if needed
                 match zone_config.state {
                     sysconfig_config_schema::ZoneState::Installed
                     | sysconfig_config_schema::ZoneState::Running => {
                         let mut adm = Adm::new(&zone_config.name);
-                        adm.install(&[]).map_err(|e| {
+                        adm.install_blocking(&[]).map_err(|e| {
                             format!("failed to install zone {}: {}", zone_config.name, e)
                         })?;
                     }
@@ -1512,15 +1495,14 @@ impl IllumosBasePlugin {
                 // Boot the zone if needed
                 if let sysconfig_config_schema::ZoneState::Running = zone_config.state {
                     let mut adm = Adm::new(&zone_config.name);
-                    adm.boot(&[])
+                    adm.boot_blocking()
                         .map_err(|e| format!("failed to boot zone {}: {}", zone_config.name, e))?;
                 }
             } else {
                 // Zone exists, check current state and handle transitions
                 let mut adm = Adm::new(&zone_config.name);
-                let zones = adm
-                    .list()
-                    .map_err(|e| format!("failed to list zones: {}", e))?;
+                let zones =
+                    Adm::list_blocking().map_err(|e| format!("failed to list zones: {}", e))?;
 
                 let current_zone = zones
                     .iter()
@@ -1530,14 +1512,14 @@ impl IllumosBasePlugin {
                 let current_state = current_zone.state();
 
                 match (current_state, &zone_config.state) {
-                    (zone::State::Configured, sysconfig_config_schema::ZoneState::Installed)
-                    | (zone::State::Configured, sysconfig_config_schema::ZoneState::Running) => {
-                        adm.install(&[]).map_err(|e| {
+                    (State::Configured, sysconfig_config_schema::ZoneState::Installed)
+                    | (State::Configured, sysconfig_config_schema::ZoneState::Running) => {
+                        adm.install_blocking(&[]).map_err(|e| {
                             format!("failed to install zone {}: {}", zone_config.name, e)
                         })?;
                     }
-                    (zone::State::Installed, sysconfig_config_schema::ZoneState::Running) => {
-                        adm.boot(&[]).map_err(|e| {
+                    (State::Installed, sysconfig_config_schema::ZoneState::Running) => {
+                        adm.boot_blocking().map_err(|e| {
                             format!("failed to boot zone {}: {}", zone_config.name, e)
                         })?;
                     }
