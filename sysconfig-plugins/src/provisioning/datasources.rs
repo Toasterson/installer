@@ -3,6 +3,7 @@
 //! This module provides implementations for collecting configuration data
 //! from various cloud providers and local sources.
 
+use base64::Engine;
 use reqwest::Client;
 use serde_json::Value;
 use std::fs;
@@ -13,11 +14,11 @@ use tracing::{debug, warn};
 /// Data source for provisioning configuration
 #[derive(Debug, Clone)]
 pub enum DataSource {
-    Local(String),                // File path
-    CloudInit(CloudInitPaths),    // Cloud-init file paths
-    Ec2,                          // EC2 metadata service
-    Gcp,                          // GCP metadata service
-    Azure,                        // Azure metadata service
+    Local(String),             // File path
+    CloudInit(CloudInitPaths), // Cloud-init file paths
+    Ec2,                       // EC2 metadata service
+    Gcp,                       // GCP metadata service
+    Azure,                     // Azure metadata service
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +70,9 @@ async fn collect_from_local_file(path: &str) -> Result<Value, Box<dyn std::error
     }
 }
 
-async fn collect_from_cloud_init(paths: &CloudInitPaths) -> Result<Value, Box<dyn std::error::Error>> {
+async fn collect_from_cloud_init(
+    paths: &CloudInitPaths,
+) -> Result<Value, Box<dyn std::error::Error>> {
     let mut config = serde_json::json!({});
 
     // Read meta-data
@@ -112,7 +115,10 @@ async fn collect_from_cloud_init(paths: &CloudInitPaths) -> Result<Value, Box<dy
 
     // Read network-config
     if Path::new(&paths.network_config).exists() {
-        debug!("Reading cloud-init network-config: {}", paths.network_config);
+        debug!(
+            "Reading cloud-init network-config: {}",
+            paths.network_config
+        );
         let network_content = fs::read_to_string(&paths.network_config)?;
         if let Ok(network_json) = serde_json::from_str::<Value>(&network_content) {
             config["network_config"] = network_json;
@@ -148,11 +154,21 @@ async fn collect_from_ec2() -> Result<Value, Box<dyn std::error::Error>> {
 
     // Get instance metadata
     if let Some(token) = &token {
-        let instance_id = get_ec2_metadata(&client, token, "instance-id").await.unwrap_or_default();
-        let instance_type = get_ec2_metadata(&client, token, "instance-type").await.unwrap_or_default();
-        let availability_zone = get_ec2_metadata(&client, token, "placement/availability-zone").await.unwrap_or_default();
-        let local_hostname = get_ec2_metadata(&client, token, "local-hostname").await.unwrap_or_default();
-        let public_hostname = get_ec2_metadata(&client, token, "public-hostname").await.unwrap_or_default();
+        let instance_id = get_ec2_metadata(&client, token, "instance-id")
+            .await
+            .unwrap_or_default();
+        let instance_type = get_ec2_metadata(&client, token, "instance-type")
+            .await
+            .unwrap_or_default();
+        let availability_zone = get_ec2_metadata(&client, token, "placement/availability-zone")
+            .await
+            .unwrap_or_default();
+        let local_hostname = get_ec2_metadata(&client, token, "local-hostname")
+            .await
+            .unwrap_or_default();
+        let public_hostname = get_ec2_metadata(&client, token, "public-hostname")
+            .await
+            .unwrap_or_default();
 
         config["ec2"] = serde_json::json!({
             "instance_id": instance_id,
@@ -189,7 +205,12 @@ async fn get_ec2_metadata(
     if response.status().is_success() {
         Ok(response.text().await?)
     } else {
-        Err(format!("Failed to get EC2 metadata from {}: {}", url, response.status()).into())
+        Err(format!(
+            "Failed to get EC2 metadata from {}: {}",
+            url,
+            response.status()
+        )
+        .into())
     }
 }
 
@@ -214,10 +235,18 @@ async fn collect_from_gcp() -> Result<Value, Box<dyn std::error::Error>> {
     let mut config = serde_json::json!({});
 
     // Get instance metadata
-    let instance_id = get_gcp_metadata(&client, "instance/id").await.unwrap_or_default();
-    let machine_type = get_gcp_metadata(&client, "instance/machine-type").await.unwrap_or_default();
-    let zone = get_gcp_metadata(&client, "instance/zone").await.unwrap_or_default();
-    let hostname = get_gcp_metadata(&client, "instance/hostname").await.unwrap_or_default();
+    let instance_id = get_gcp_metadata(&client, "instance/id")
+        .await
+        .unwrap_or_default();
+    let machine_type = get_gcp_metadata(&client, "instance/machine-type")
+        .await
+        .unwrap_or_default();
+    let zone = get_gcp_metadata(&client, "instance/zone")
+        .await
+        .unwrap_or_default();
+    let hostname = get_gcp_metadata(&client, "instance/hostname")
+        .await
+        .unwrap_or_default();
 
     config["gcp"] = serde_json::json!({
         "instance_id": instance_id,
@@ -227,7 +256,9 @@ async fn collect_from_gcp() -> Result<Value, Box<dyn std::error::Error>> {
     });
 
     // Try to get startup script
-    if let Ok(startup_script) = get_gcp_metadata(&client, "instance/attributes/startup-script").await {
+    if let Ok(startup_script) =
+        get_gcp_metadata(&client, "instance/attributes/startup-script").await
+    {
         if !startup_script.trim().is_empty() {
             config["startup_script"] = Value::String(startup_script);
         }
@@ -240,7 +271,10 @@ async fn get_gcp_metadata(
     client: &Client,
     path: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let url = format!("http://metadata.google.internal/computeMetadata/v1/{}", path);
+    let url = format!(
+        "http://metadata.google.internal/computeMetadata/v1/{}",
+        path
+    );
     let response = client
         .get(&url)
         .header("Metadata-Flavor", "Google")
@@ -251,7 +285,12 @@ async fn get_gcp_metadata(
     if response.status().is_success() {
         Ok(response.text().await?)
     } else {
-        Err(format!("Failed to get GCP metadata from {}: {}", url, response.status()).into())
+        Err(format!(
+            "Failed to get GCP metadata from {}: {}",
+            url,
+            response.status()
+        )
+        .into())
     }
 }
 
@@ -276,10 +315,18 @@ async fn collect_from_azure() -> Result<Value, Box<dyn std::error::Error>> {
     let mut config = serde_json::json!({});
 
     // Get instance metadata
-    let vm_id = get_azure_metadata(&client, "instance/compute/vmId").await.unwrap_or_default();
-    let vm_size = get_azure_metadata(&client, "instance/compute/vmSize").await.unwrap_or_default();
-    let location = get_azure_metadata(&client, "instance/compute/location").await.unwrap_or_default();
-    let resource_group = get_azure_metadata(&client, "instance/compute/resourceGroupName").await.unwrap_or_default();
+    let vm_id = get_azure_metadata(&client, "instance/compute/vmId")
+        .await
+        .unwrap_or_default();
+    let vm_size = get_azure_metadata(&client, "instance/compute/vmSize")
+        .await
+        .unwrap_or_default();
+    let location = get_azure_metadata(&client, "instance/compute/location")
+        .await
+        .unwrap_or_default();
+    let resource_group = get_azure_metadata(&client, "instance/compute/resourceGroupName")
+        .await
+        .unwrap_or_default();
 
     config["azure"] = serde_json::json!({
         "vm_id": vm_id,
@@ -292,7 +339,7 @@ async fn collect_from_azure() -> Result<Value, Box<dyn std::error::Error>> {
     if let Ok(custom_data) = get_azure_metadata(&client, "instance/compute/customData").await {
         if !custom_data.trim().is_empty() {
             // Custom data is base64 encoded
-            if let Ok(decoded) = base64::decode(&custom_data) {
+            if let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(&custom_data) {
                 if let Ok(decoded_str) = String::from_utf8(decoded) {
                     config["custom_data"] = Value::String(decoded_str);
                 }
@@ -321,6 +368,11 @@ async fn get_azure_metadata(
     if response.status().is_success() {
         Ok(response.text().await?)
     } else {
-        Err(format!("Failed to get Azure metadata from {}: {}", url, response.status()).into())
+        Err(format!(
+            "Failed to get Azure metadata from {}: {}",
+            url,
+            response.status()
+        )
+        .into())
     }
 }

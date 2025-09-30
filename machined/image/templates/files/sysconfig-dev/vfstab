@@ -1,0 +1,11 @@
+#device		device		mount		FS	fsck	mount	mount
+#to mount	to fsck		point		type	pass	at boot	options
+#
+fd		-		/dev/fd		fd	-	no	-
+/proc		-		/proc		proc	-	no	-
+ctfs		-		/system/contract	ctfs	-	no	-
+objfs		-		/system/object	objfs	-	no	-
+sharefs		-		/etc/dfs/sharetab	sharefs	-	no	-
+#
+# 9P filesystem for development - mount repo root
+repo		-		/repo		9pfs	-	yes	tag=repo,trans=virtio,version=9p2000.L

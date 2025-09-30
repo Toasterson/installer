@@ -1,13 +1,15 @@
 //! Configuration converter for transforming cloud-init and other formats
 //! to the unified provisioning schema.
 
-use serde_json::{Value, json};
-use sysconfig_config_schema::*;
+use serde_json::Value;
 use std::collections::HashMap;
-use tracing::{debug, warn};
+use sysconfig_config_schema::*;
+use tracing::warn;
 
 /// Convert raw configuration data to unified schema
-pub fn convert_to_unified_schema(config: Value) -> Result<UnifiedConfig, Box<dyn std::error::Error>> {
+pub fn convert_to_unified_schema(
+    config: Value,
+) -> Result<UnifiedConfig, Box<dyn std::error::Error>> {
     let mut unified = UnifiedConfig::new();
 
     // Convert system configuration
@@ -46,7 +48,9 @@ pub fn convert_to_unified_schema(config: Value) -> Result<UnifiedConfig, Box<dyn
     Ok(unified)
 }
 
-fn convert_system_config(config: &Value) -> Result<Option<SystemConfig>, Box<dyn std::error::Error>> {
+fn convert_system_config(
+    config: &Value,
+) -> Result<Option<SystemConfig>, Box<dyn std::error::Error>> {
     let mut system = SystemConfig {
         hostname: None,
         fqdn: None,
@@ -58,43 +62,40 @@ fn convert_system_config(config: &Value) -> Result<Option<SystemConfig>, Box<dyn
     let mut has_config = false;
 
     // Extract hostname from various sources
-    if let Some(hostname) = extract_string_field(config, &[
-        "hostname",
-        "meta_data.local-hostname",
-        "gcp.hostname",
-        "user_data.hostname",
-        "ec2.local_hostname"
-    ]) {
+    if let Some(hostname) = extract_string_field(
+        config,
+        &[
+            "hostname",
+            "meta_data.local-hostname",
+            "gcp.hostname",
+            "user_data.hostname",
+            "ec2.local_hostname",
+        ],
+    ) {
         system.hostname = Some(hostname);
         has_config = true;
     }
 
     // Extract FQDN
-    if let Some(fqdn) = extract_string_field(config, &[
-        "fqdn",
-        "user_data.fqdn",
-        "meta_data.fqdn"
-    ]) {
+    if let Some(fqdn) = extract_string_field(config, &["fqdn", "user_data.fqdn", "meta_data.fqdn"])
+    {
         system.fqdn = Some(fqdn);
         has_config = true;
     }
 
     // Extract timezone
-    if let Some(timezone) = extract_string_field(config, &[
-        "timezone",
-        "user_data.timezone",
-        "meta_data.timezone"
-    ]) {
+    if let Some(timezone) = extract_string_field(
+        config,
+        &["timezone", "user_data.timezone", "meta_data.timezone"],
+    ) {
         system.timezone = Some(timezone);
         has_config = true;
     }
 
     // Extract locale
-    if let Some(locale) = extract_string_field(config, &[
-        "locale",
-        "user_data.locale",
-        "meta_data.locale"
-    ]) {
+    if let Some(locale) =
+        extract_string_field(config, &["locale", "user_data.locale", "meta_data.locale"])
+    {
         system.locale = Some(locale);
         has_config = true;
     }
@@ -133,7 +134,7 @@ fn convert_users(config: &Value) -> Result<Vec<UserConfig>, Box<dyn std::error::
     if let Some(user_data) = config.get("user_data") {
         if let Some(ssh_keys) = user_data.get("ssh_authorized_keys") {
             if let Some(key_array) = ssh_keys.as_array() {
-                let mut default_user = UserConfig {
+                let default_user = UserConfig {
                     name: "root".to_string(),
                     description: None,
                     shell: None,
@@ -146,7 +147,10 @@ fn convert_users(config: &Value) -> Result<Vec<UserConfig>, Box<dyn std::error::
                     sudo: None,
                     authentication: AuthenticationConfig {
                         password: None,
-                        ssh_keys: key_array.iter().filter_map(|k| k.as_str().map(|s| s.to_string())).collect(),
+                        ssh_keys: key_array
+                            .iter()
+                            .filter_map(|k| k.as_str().map(|s| s.to_string()))
+                            .collect(),
                         ssh_import_ids: vec![],
                     },
                 };
@@ -178,22 +182,34 @@ fn convert_cloud_init_user(user: &Value) -> Result<Option<UserConfig>, Box<dyn s
         None => return Ok(None), // Skip users without names
     };
 
-    let mut converted = UserConfig {
+    let converted = UserConfig {
         name,
-        description: user.get("gecos").and_then(|g| g.as_str()).map(|s| s.to_string()),
-        shell: user.get("shell").and_then(|s| s.as_str()).map(|s| s.to_string()),
+        description: user
+            .get("gecos")
+            .and_then(|g| g.as_str())
+            .map(|s| s.to_string()),
+        shell: user
+            .get("shell")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string()),
         groups: extract_string_array(user, "groups").unwrap_or_default(),
-        primary_group: user.get("primary_group")
+        primary_group: user
+            .get("primary_group")
             .or(user.get("primary-group"))
             .and_then(|g| g.as_str())
             .map(|s| s.to_string()),
-        system_user: user.get("system").and_then(|s| s.as_bool()).unwrap_or(false),
-        home_directory: user.get("homedir")
+        system_user: user
+            .get("system")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false),
+        home_directory: user
+            .get("homedir")
             .or(user.get("home"))
             .and_then(|h| h.as_str())
             .map(|s| s.to_string()),
         uid: user.get("uid").and_then(|u| u.as_u64()).map(|u| u as u32),
-        create_home: user.get("create_home")
+        create_home: user
+            .get("create_home")
             .or(user.get("create-home"))
             .and_then(|c| c.as_bool())
             .unwrap_or(true),
@@ -212,17 +228,17 @@ fn convert_cloud_init_user(user: &Value) -> Result<Option<UserConfig>, Box<dyn s
     Ok(Some(converted))
 }
 
-fn convert_sudo_config(sudo_value: Option<&Value>) -> Result<Option<SudoConfig>, Box<dyn std::error::Error>> {
+fn convert_sudo_config(
+    sudo_value: Option<&Value>,
+) -> Result<Option<SudoConfig>, Box<dyn std::error::Error>> {
     match sudo_value {
         Some(Value::Bool(true)) => Ok(Some(SudoConfig::Unrestricted)),
         Some(Value::Bool(false)) => Ok(Some(SudoConfig::Deny)),
-        Some(Value::String(s)) => {
-            match s.as_str() {
-                "ALL=(ALL) NOPASSWD:ALL" => Ok(Some(SudoConfig::Unrestricted)),
-                "false" | "deny" => Ok(Some(SudoConfig::Deny)),
-                _ => Ok(Some(SudoConfig::Custom(vec![s.clone()]))),
-            }
-        }
+        Some(Value::String(s)) => match s.as_str() {
+            "ALL=(ALL) NOPASSWD:ALL" => Ok(Some(SudoConfig::Unrestricted)),
+            "false" | "deny" => Ok(Some(SudoConfig::Deny)),
+            _ => Ok(Some(SudoConfig::Custom(vec![s.clone()]))),
+        },
         Some(Value::Array(rules)) => {
             let rule_strings: Vec<String> = rules
                 .iter()
@@ -238,13 +254,18 @@ fn convert_sudo_config(sudo_value: Option<&Value>) -> Result<Option<SudoConfig>,
     }
 }
 
-fn convert_password_config(user: &Value) -> Result<Option<PasswordConfig>, Box<dyn std::error::Error>> {
+fn convert_password_config(
+    user: &Value,
+) -> Result<Option<PasswordConfig>, Box<dyn std::error::Error>> {
     // Look for password hash in various fields
     if let Some(passwd) = user.get("passwd").and_then(|p| p.as_str()) {
         if passwd != "*" && !passwd.is_empty() {
             return Ok(Some(PasswordConfig {
                 hash: passwd.to_string(),
-                expire_on_first_login: user.get("expire").and_then(|e| e.as_bool()).unwrap_or(false),
+                expire_on_first_login: user
+                    .get("expire")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false),
             }));
         }
     }
@@ -254,7 +275,10 @@ fn convert_password_config(user: &Value) -> Result<Option<PasswordConfig>, Box<d
         if !hashed_passwd.is_empty() {
             return Ok(Some(PasswordConfig {
                 hash: hashed_passwd.to_string(),
-                expire_on_first_login: user.get("expire").and_then(|e| e.as_bool()).unwrap_or(false),
+                expire_on_first_login: user
+                    .get("expire")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false),
             }));
         }
     }
@@ -262,7 +286,9 @@ fn convert_password_config(user: &Value) -> Result<Option<PasswordConfig>, Box<d
     Ok(None)
 }
 
-fn convert_networking(config: &Value) -> Result<Option<NetworkingConfig>, Box<dyn std::error::Error>> {
+fn convert_networking(
+    config: &Value,
+) -> Result<Option<NetworkingConfig>, Box<dyn std::error::Error>> {
     let mut networking = NetworkingConfig {
         interfaces: vec![],
         nameservers: vec![],
@@ -322,7 +348,9 @@ fn convert_networking(config: &Value) -> Result<Option<NetworkingConfig>, Box<dy
     }
 }
 
-fn convert_network_v1_interfaces(network_config: &Value) -> Result<Vec<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
+fn convert_network_v1_interfaces(
+    network_config: &Value,
+) -> Result<Vec<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
     let mut interfaces = Vec::new();
 
     if let Some(config_array) = network_config.get("config").and_then(|c| c.as_array()) {
@@ -340,7 +368,9 @@ fn convert_network_v1_interfaces(network_config: &Value) -> Result<Vec<NetworkIn
     Ok(interfaces)
 }
 
-fn convert_v1_physical_interface(interface: &Value) -> Result<Option<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
+fn convert_v1_physical_interface(
+    interface: &Value,
+) -> Result<Option<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
     let name = match interface.get("name").and_then(|n| n.as_str()) {
         Some(n) => n.to_string(),
         None => return Ok(None),
@@ -348,10 +378,16 @@ fn convert_v1_physical_interface(interface: &Value) -> Result<Option<NetworkInte
 
     let mut net_interface = NetworkInterfaceConfig {
         name,
-        mac_address: interface.get("mac_address").and_then(|m| m.as_str()).map(|s| s.to_string()),
+        mac_address: interface
+            .get("mac_address")
+            .and_then(|m| m.as_str())
+            .map(|s| s.to_string()),
         addresses: vec![],
         gateway: None,
-        mtu: interface.get("mtu").and_then(|m| m.as_u64()).map(|m| m as u16),
+        mtu: interface
+            .get("mtu")
+            .and_then(|m| m.as_u64())
+            .map(|m| m as u16),
         description: None,
         vlan: None,
     };
@@ -397,7 +433,9 @@ fn convert_v1_physical_interface(interface: &Value) -> Result<Option<NetworkInte
     Ok(Some(net_interface))
 }
 
-fn convert_network_v2_config(network_config: &Value) -> Result<NetworkingConfig, Box<dyn std::error::Error>> {
+fn convert_network_v2_config(
+    network_config: &Value,
+) -> Result<NetworkingConfig, Box<dyn std::error::Error>> {
     let mut networking = NetworkingConfig {
         interfaces: vec![],
         nameservers: vec![],
@@ -430,10 +468,14 @@ fn convert_network_v2_config(network_config: &Value) -> Result<NetworkingConfig,
     Ok(networking)
 }
 
-fn convert_v2_ethernet_interface(name: &str, config: &Value) -> Result<Option<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
+fn convert_v2_ethernet_interface(
+    name: &str,
+    config: &Value,
+) -> Result<Option<NetworkInterfaceConfig>, Box<dyn std::error::Error>> {
     let mut interface = NetworkInterfaceConfig {
         name: name.to_string(),
-        mac_address: config.get("match")
+        mac_address: config
+            .get("match")
             .and_then(|m| m.get("macaddress"))
             .and_then(|mac| mac.as_str())
             .map(|s| s.to_string()),
@@ -527,7 +569,9 @@ fn convert_software(config: &Value) -> Result<Option<SoftwareConfig>, Box<dyn st
     }
 }
 
-fn convert_repositories(user_data: &Value) -> Result<Option<RepositoryConfig>, Box<dyn std::error::Error>> {
+fn convert_repositories(
+    user_data: &Value,
+) -> Result<Option<RepositoryConfig>, Box<dyn std::error::Error>> {
     let mut repo_config = RepositoryConfig {
         apt: None,
         yum: None,
@@ -574,7 +618,10 @@ fn convert_repositories(user_data: &Value) -> Result<Option<RepositoryConfig>, B
     }
 }
 
-fn convert_apt_source(name: &str, source: &Value) -> Result<Option<AptSource>, Box<dyn std::error::Error>> {
+fn convert_apt_source(
+    name: &str,
+    source: &Value,
+) -> Result<Option<AptSource>, Box<dyn std::error::Error>> {
     let source_str = source.get("source").and_then(|s| s.as_str());
     if source_str.is_none() {
         return Ok(None);
@@ -601,9 +648,18 @@ fn convert_apt_source(name: &str, source: &Value) -> Result<Option<AptSource>, B
         uri,
         suites: vec![suite],
         components,
-        key_id: source.get("keyid").and_then(|k| k.as_str()).map(|s| s.to_string()),
-        key_server: source.get("keyserver").and_then(|k| k.as_str()).map(|s| s.to_string()),
-        key_content: source.get("key").and_then(|k| k.as_str()).map(|s| s.to_string()),
+        key_id: source
+            .get("keyid")
+            .and_then(|k| k.as_str())
+            .map(|s| s.to_string()),
+        key_server: source
+            .get("keyserver")
+            .and_then(|k| k.as_str())
+            .map(|s| s.to_string()),
+        key_content: source
+            .get("key")
+            .and_then(|k| k.as_str())
+            .map(|s| s.to_string()),
     };
 
     Ok(Some(apt_source))
@@ -707,7 +763,9 @@ fn convert_storage(_config: &Value) -> Result<Option<StorageConfig>, Box<dyn std
     Ok(None)
 }
 
-fn convert_power_state(config: &Value) -> Result<Option<PowerStateConfig>, Box<dyn std::error::Error>> {
+fn convert_power_state(
+    config: &Value,
+) -> Result<Option<PowerStateConfig>, Box<dyn std::error::Error>> {
     if let Some(user_data) = config.get("user_data") {
         if let Some(power_state) = user_data.get("power_state") {
             let mode = match power_state.get("mode").and_then(|m| m.as_str()) {
@@ -717,10 +775,10 @@ fn convert_power_state(config: &Value) -> Result<Option<PowerStateConfig>, Box<d
                 _ => PowerStateMode::Noop,
             };
 
-            let delay = power_state.get("delay")
-                .and_then(|d| d.as_u64());
+            let delay = power_state.get("delay").and_then(|d| d.as_u64());
 
-            let message = power_state.get("message")
+            let message = power_state
+                .get("message")
                 .and_then(|m| m.as_str())
                 .map(|s| s.to_string());
 
@@ -750,7 +808,9 @@ fn extract_string_field(config: &Value, paths: &[&str]) -> Option<String> {
 }
 
 fn extract_string_array(value: &Value, key: &str) -> Option<Vec<String>> {
-    value.get(key)?.as_array()?
+    value
+        .get(key)?
+        .as_array()?
         .iter()
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
         .collect::<Vec<_>>()

@@ -18,10 +18,18 @@ pub fn apply_hostname(hostname: &str, dry_run: bool) -> io::Result<bool> {
         Ok(content) => content,
         Err(e) => {
             if dry_run {
-                info!("DRY-RUN: Could not read {} ({}), assuming empty", persist_path.display(), e);
+                info!(
+                    "DRY-RUN: Could not read {} ({}), assuming empty",
+                    persist_path.display(),
+                    e
+                );
                 String::new()
             } else {
-                warn!("Could not read {} ({}), assuming empty", persist_path.display(), e);
+                warn!(
+                    "Could not read {} ({}), assuming empty",
+                    persist_path.display(),
+                    e
+                );
                 String::new()
             }
         }
@@ -51,10 +59,16 @@ pub fn apply_hostname(hostname: &str, dry_run: bool) -> io::Result<bool> {
         Ok(hostname) => hostname,
         Err(e) => {
             if dry_run {
-                info!("DRY-RUN: Could not get current runtime hostname ({}), assuming empty", e);
+                info!(
+                    "DRY-RUN: Could not get current runtime hostname ({}), assuming empty",
+                    e
+                );
                 String::new()
             } else {
-                warn!("Could not get current runtime hostname ({}), assuming empty", e);
+                warn!(
+                    "Could not get current runtime hostname ({}), assuming empty",
+                    e
+                );
                 String::new()
             }
         }
@@ -173,7 +187,12 @@ fn get_runtime_hostname() -> io::Result<String> {
 
 fn set_runtime_hostname(hostname: &str) -> io::Result<()> {
     let bytes = std::ffi::OsStr::new(hostname).as_bytes();
-    let rc = unsafe { libc::sethostname(bytes.as_ptr() as *const libc::c_char, bytes.len()) };
+    let rc = unsafe {
+        libc::sethostname(
+            bytes.as_ptr() as *const libc::c_char,
+            bytes.len().try_into().unwrap(),
+        )
+    };
     if rc != 0 {
         return Err(io::Error::last_os_error());
     }
