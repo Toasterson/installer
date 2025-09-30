@@ -230,6 +230,20 @@ impl PluginService for FreeBsdBasePlugin {
                 }
             }
 
+            // Apply storage configuration
+            if let Some(storage) = &unified_config.storage {
+                if let Err(e) = self
+                    .apply_storage_config(storage, effective_dry_run, &mut task_changes)
+                    .await
+                {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply storage config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+
             // Apply container configuration (FreeBSD jails)
             if let Some(containers) = &unified_config.containers {
                 if let Err(e) = self
@@ -758,6 +772,291 @@ impl FreeBsdBasePlugin {
             })),
             verbose: false,
         });
+
+        Ok(())
+    }
+
+    async fn apply_storage_config(
+        &self,
+        storage: &sysconfig_config_schema::StorageConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying storage configuration (FreeBSD)");
+
+        // Handle ZFS pools
+        for pool in &storage.pools {
+            if let sysconfig_config_schema::StoragePoolType::ZfsPool = pool.pool_type {
+                // Check if pool exists
+                let pool_exists = if dry_run {
+                    false
+                } else {
+                    std::process::Command::new("/sbin/zpool")
+                        .args(&["list", "-H", &pool.name])
+                        .output()
+                        .map(|output| output.status.success())
+                        .unwrap_or(false)
+                };
+
+                if dry_run {
+                    info!("DRY-RUN: Would create/configure ZFS pool {}", pool.name);
+                } else if !pool_exists && (!pool.devices.is_empty() || pool.topology.is_some()) {
+                    // Create the pool with topology
+                    let mut cmd = std::process::Command::new("/sbin/zpool");
+                    cmd.args(&["create", &pool.name]);
+
+                    if let Some(topology) = &pool.topology {
+                        // Add data vdevs
+                        for vdev in &topology.data {
+                            match vdev.vdev_type {
+                                sysconfig_config_schema::ZfsVdevType::Stripe => {
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Mirror => {
+                                    cmd.arg("mirror");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz => {
+                                    cmd.arg("raidz");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz2 => {
+                                    cmd.arg("raidz2");
+                                    cmd.args(&vdev.devices);
+                                }
+                                sysconfig_config_schema::ZfsVdevType::Raidz3 => {
+                                    cmd.arg("raidz3");
+                                    cmd.args(&vdev.devices);
+                                }
+                            }
+                        }
+                    } else {
+                        // Simple pool with devices
+                        cmd.args(&pool.devices);
+                    }
+
+                    let output = cmd
+                        .output()
+                        .map_err(|e| format!("failed to execute zpool create: {}", e))?;
+
+                    if !output.status.success() {
+                        return Err(format!(
+                            "failed to create ZFS pool {}: {}",
+                            pool.name,
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+
+                    info!("Created ZFS pool: {}", pool.name);
+                }
+
+                // Set pool properties
+                if !dry_run {
+                    for (prop, value) in &pool.properties {
+                        let output = std::process::Command::new("/sbin/zpool")
+                            .args(&["set", &format!("{}={}", prop, value), &pool.name])
+                            .output()
+                            .map_err(|e| format!("failed to set pool property: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to set property {}={} on pool {}: {}",
+                                prop,
+                                value,
+                                pool.name,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+                    }
+                }
+
+                task_changes.push(TaskChange {
+                    change_type: if pool_exists {
+                        TaskChangeType::Update
+                    } else {
+                        TaskChangeType::Create
+                    },
+                    path: format!("zpool:{}", pool.name),
+                    old_value: None,
+                    new_value: Some(serde_json::json!({
+                        "devices": pool.devices,
+                        "properties": pool.properties,
+                        "topology": pool.topology
+                    })),
+                    verbose: false,
+                });
+            }
+        }
+
+        // Handle ZFS datasets
+        for dataset in &storage.zfs_datasets {
+            if dry_run {
+                info!("DRY-RUN: Would create ZFS dataset {}", dataset.name);
+            } else {
+                // Create the dataset
+                let mut cmd = std::process::Command::new("/sbin/zfs");
+                cmd.args(&["create"]);
+
+                match &dataset.dataset_type {
+                    sysconfig_config_schema::ZfsDatasetType::Filesystem => {
+                        // No additional arguments needed for filesystem
+                    }
+                    sysconfig_config_schema::ZfsDatasetType::Volume { size } => {
+                        cmd.args(&["-V", size]);
+                    }
+                }
+
+                cmd.arg(&dataset.name);
+
+                let output = cmd
+                    .output()
+                    .map_err(|e| format!("failed to create ZFS dataset: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to create ZFS dataset {}: {}",
+                        dataset.name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                // Set properties
+                for (prop, value) in &dataset.properties {
+                    let output = std::process::Command::new("/sbin/zfs")
+                        .args(&["set", &format!("{}={}", prop, value), &dataset.name])
+                        .output()
+                        .map_err(|e| format!("failed to set dataset property: {}", e))?;
+
+                    if !output.status.success() {
+                        return Err(format!(
+                            "failed to set property {}={} on dataset {}: {}",
+                            prop,
+                            value,
+                            dataset.name,
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
+
+                info!("Created ZFS dataset: {}", dataset.name);
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("zfs-dataset:{}", dataset.name),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "name": dataset.name,
+                    "type": dataset.dataset_type,
+                    "properties": dataset.properties
+                })),
+                verbose: false,
+            });
+        }
+
+        // Handle filesystems (UFS, etc.)
+        for filesystem in &storage.filesystems {
+            match filesystem.fstype {
+                sysconfig_config_schema::FilesystemType::Zfs => {
+                    // Already handled above in zfs_datasets
+                }
+                sysconfig_config_schema::FilesystemType::Ufs => {
+                    if dry_run {
+                        info!(
+                            "DRY-RUN: Would create UFS filesystem on {}",
+                            filesystem.device
+                        );
+                    } else {
+                        // Create UFS filesystem
+                        let output = std::process::Command::new("/sbin/newfs")
+                            .arg(&filesystem.device)
+                            .output()
+                            .map_err(|e| format!("failed to create UFS filesystem: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to create UFS filesystem on {}: {}",
+                                filesystem.device,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+
+                        info!("Created UFS filesystem on: {}", filesystem.device);
+                    }
+
+                    task_changes.push(TaskChange {
+                        change_type: TaskChangeType::Create,
+                        path: format!("ufs:{}", filesystem.device),
+                        old_value: None,
+                        new_value: Some(serde_json::json!({
+                            "device": filesystem.device,
+                            "fstype": "ufs",
+                            "options": filesystem.options
+                        })),
+                        verbose: false,
+                    });
+                }
+                _ => {
+                    // Other filesystem types not supported on FreeBSD
+                    warn!(
+                        "Unsupported filesystem type on FreeBSD: {:?}",
+                        filesystem.fstype
+                    );
+                }
+            }
+        }
+
+        // Handle mounts
+        for mount in &storage.mounts {
+            if dry_run {
+                info!("DRY-RUN: Would mount {} at {}", mount.source, mount.target);
+            } else {
+                // Create mount point if it doesn't exist
+                if let Err(e) = std::fs::create_dir_all(&mount.target) {
+                    return Err(format!(
+                        "failed to create mount point {}: {}",
+                        mount.target, e
+                    ));
+                }
+
+                // Mount the filesystem
+                let mut cmd = std::process::Command::new("/sbin/mount");
+
+                if !mount.options.is_empty() {
+                    let options_str = mount.options.join(",");
+                    cmd.args(&["-o", &options_str]);
+                }
+
+                cmd.args(&[&mount.source, &mount.target]);
+
+                let output = cmd
+                    .output()
+                    .map_err(|e| format!("failed to mount filesystem: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to mount {} at {}: {}",
+                        mount.source,
+                        mount.target,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                info!("Mounted {} at {}", mount.source, mount.target);
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("mount:{}", mount.target),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "source": mount.source,
+                    "target": mount.target,
+                    "options": mount.options
+                })),
+                verbose: false,
+            });
+        }
 
         Ok(())
     }

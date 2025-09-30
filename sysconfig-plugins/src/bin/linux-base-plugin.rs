@@ -2,13 +2,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
+use sysconfig_config_schema::{FilesystemType, UnifiedConfig};
+use sysconfig_plugins::tasks::files::Files;
+use sysconfig_plugins::tasks::network_settings::NetworkSettings;
+use sysconfig_plugins::{TaskChange, TaskChangeType, TaskHandler};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::{Request, Response, Status};
+use tracing::{debug, warn};
 use tracing::{error, info};
-use sysconfig_plugins::tasks::network_settings::NetworkSettings;
-use sysconfig_plugins::tasks::files::Files;
-use sysconfig_plugins::TaskHandler;
 
 // Local proto module generated from ../sysconfig/proto/sysconfig.proto
 mod proto {
@@ -73,7 +75,7 @@ fn default_plugin_socket_path() -> String {
 
 #[derive(Default)]
 struct LinuxBasePlugin {
-    inner: Arc<RwLock<PluginState>>, 
+    inner: Arc<RwLock<PluginState>>,
 }
 
 #[derive(Default)]
@@ -95,7 +97,10 @@ impl PluginService for LinuxBasePlugin {
             st.service_socket_path = Some(req.service_socket_path.clone());
         }
         info!(plugin_id = %req.plugin_id, service = %req.service_socket_path, "Linux base plugin initialized");
-        Ok(Response::new(proto::InitializeResponse { success: true, error: String::new() }))
+        Ok(Response::new(proto::InitializeResponse {
+            success: true,
+            error: String::new(),
+        }))
     }
 
     async fn get_config(
@@ -116,10 +121,11 @@ impl PluginService for LinuxBasePlugin {
         request: Request<proto::DiffStateRequest>,
     ) -> Result<Response<proto::DiffStateResponse>, Status> {
         let req = request.into_inner();
-        let current: serde_json::Value = serde_json::from_str(&req.current_state).unwrap_or(serde_json::Value::Null);
+        let current: serde_json::Value =
+            serde_json::from_str(&req.current_state).unwrap_or(serde_json::Value::Null);
         let desired: serde_json::Value = match serde_json::from_str(&req.desired_state) {
             Ok(v) => v,
-            Err(e) => {
+            Err(_) => {
                 return Ok(Response::new(proto::DiffStateResponse {
                     different: false,
                     changes: vec![],
@@ -130,7 +136,11 @@ impl PluginService for LinuxBasePlugin {
         let mut task_changes: Vec<sysconfig_plugins::TaskChange> = Vec::new();
 
         if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
-            let cur_settings = current.get("network").and_then(|n| n.get("settings")).cloned().unwrap_or(serde_json::Value::Null);
+            let cur_settings = current
+                .get("network")
+                .and_then(|n| n.get("settings"))
+                .cloned()
+                .unwrap_or(serde_json::Value::Null);
             match NetworkSettings::default().diff(&cur_settings, settings) {
                 Ok(mut ch) => task_changes.append(&mut ch),
                 Err(_) => {}
@@ -144,19 +154,25 @@ impl PluginService for LinuxBasePlugin {
             }
         }
 
-        let changes: Vec<proto::StateChange> = task_changes.into_iter().map(|c| proto::StateChange {
-            r#type: match c.change_type {
-                sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
-                sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
-                sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
-            },
-            path: c.path,
-            old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
-            new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
-            verbose: c.verbose,
-        }).collect();
+        let changes: Vec<proto::StateChange> = task_changes
+            .into_iter()
+            .map(|c| proto::StateChange {
+                r#type: match c.change_type {
+                    sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
+                    sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
+                    sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
+                },
+                path: c.path,
+                old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
+                new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
+                verbose: c.verbose,
+            })
+            .collect();
 
-        let resp = proto::DiffStateResponse { different: !changes.is_empty(), changes };
+        let resp = proto::DiffStateResponse {
+            different: !changes.is_empty(),
+            changes,
+        };
         Ok(Response::new(resp))
     }
 
@@ -166,7 +182,7 @@ impl PluginService for LinuxBasePlugin {
     ) -> Result<Response<proto::PluginApplyStateResponse>, Status> {
         let req = request.into_inner();
 
-        // Parse desired state and apply network.settings if present
+        // Parse desired state
         let desired: serde_json::Value = match serde_json::from_str(&req.state) {
             Ok(v) => v,
             Err(e) => {
@@ -179,58 +195,103 @@ impl PluginService for LinuxBasePlugin {
         };
 
         let mut task_changes: Vec<sysconfig_plugins::TaskChange> = Vec::new();
-        if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
-            if let Err(e) = NetworkSettings::validate_schema(settings) {
-                return Ok(Response::new(proto::PluginApplyStateResponse {
-                    success: false,
-                    error: format!("invalid network.settings schema: {}", e),
-                    changes: vec![],
-                }));
-            }
-            match NetworkSettings::default().apply(settings, req.dry_run) {
-                Ok(mut changes) => {
-                    task_changes.append(&mut changes);
-                }
-                Err(e) => {
-                    return Ok(Response::new(proto::PluginApplyStateResponse {
-                        success: false,
-                        error: e,
-                        changes: vec![],
-                    }));
-                }
-            }
-        }
 
-        // Apply files task if present at top-level: files: [ { ... } ]
-        if let Some(files) = desired.get("files") {
-            match Files::default().apply(files, req.dry_run) {
-                Ok(mut changes) => {
-                    task_changes.append(&mut changes);
-                }
-                Err(e) => {
+        // Try to parse as unified config first
+        let unified_config_result = UnifiedConfig::from_json(&req.state);
+
+        if let Ok(unified_config) = unified_config_result {
+            debug!("Processing unified configuration schema");
+
+            // Apply storage configuration
+            if let Some(storage) = &unified_config.storage {
+                if let Err(e) = self
+                    .apply_storage_config(storage, req.dry_run, &mut task_changes)
+                    .await
+                {
                     return Ok(Response::new(proto::PluginApplyStateResponse {
                         success: false,
-                        error: e,
+                        error: format!("failed to apply storage config: {}", e),
                         changes: vec![],
                     }));
+                }
+            }
+
+            // Apply container configuration (Docker/Podman)
+            if let Some(containers) = &unified_config.containers {
+                if let Err(e) = self
+                    .apply_container_config(containers, req.dry_run, &mut task_changes)
+                    .await
+                {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("failed to apply container config: {}", e),
+                        changes: vec![],
+                    }));
+                }
+            }
+        } else {
+            // Fall back to legacy JSON format
+            debug!("Processing legacy JSON configuration format");
+            if let Some(settings) = desired.get("network").and_then(|n| n.get("settings")) {
+                if let Err(e) = NetworkSettings::validate_schema(settings) {
+                    return Ok(Response::new(proto::PluginApplyStateResponse {
+                        success: false,
+                        error: format!("invalid network.settings schema: {}", e),
+                        changes: vec![],
+                    }));
+                }
+                match NetworkSettings::default().apply(settings, req.dry_run) {
+                    Ok(mut changes) => {
+                        task_changes.append(&mut changes);
+                    }
+                    Err(e) => {
+                        return Ok(Response::new(proto::PluginApplyStateResponse {
+                            success: false,
+                            error: e,
+                            changes: vec![],
+                        }));
+                    }
+                }
+            }
+
+            // Apply files task if present at top-level: files: [ { ... } ]
+            if let Some(files) = desired.get("files") {
+                match Files::default().apply(files, req.dry_run) {
+                    Ok(mut changes) => {
+                        task_changes.append(&mut changes);
+                    }
+                    Err(e) => {
+                        return Ok(Response::new(proto::PluginApplyStateResponse {
+                            success: false,
+                            error: e,
+                            changes: vec![],
+                        }));
+                    }
                 }
             }
         }
 
         // Translate TaskChange -> proto::StateChange
-        let changes: Vec<proto::StateChange> = task_changes.into_iter().map(|c| proto::StateChange {
-            r#type: match c.change_type {
-                sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
-                sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
-                sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
-            },
-            path: c.path,
-            old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
-            new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
-            verbose: c.verbose,
-        }).collect();
+        let changes: Vec<proto::StateChange> = task_changes
+            .into_iter()
+            .map(|c| proto::StateChange {
+                r#type: match c.change_type {
+                    sysconfig_plugins::TaskChangeType::Create => proto::ChangeType::Create as i32,
+                    sysconfig_plugins::TaskChangeType::Update => proto::ChangeType::Update as i32,
+                    sysconfig_plugins::TaskChangeType::Delete => proto::ChangeType::Delete as i32,
+                },
+                path: c.path,
+                old_value: c.old_value.map(|v| v.to_string()).unwrap_or_default(),
+                new_value: c.new_value.map(|v| v.to_string()).unwrap_or_default(),
+                verbose: c.verbose,
+            })
+            .collect();
 
-        let resp = proto::PluginApplyStateResponse { success: true, error: String::new(), changes };
+        let resp = proto::PluginApplyStateResponse {
+            success: true,
+            error: String::new(),
+            changes,
+        };
         Ok(Response::new(resp))
     }
 
@@ -239,15 +300,317 @@ impl PluginService for LinuxBasePlugin {
         request: Request<proto::PluginExecuteActionRequest>,
     ) -> Result<Response<proto::PluginExecuteActionResponse>, Status> {
         let req = request.into_inner();
-        let result = format!("linux-base executed action '{}' with params '{}'", req.action, req.parameters);
-        Ok(Response::new(proto::PluginExecuteActionResponse { success: true, error: String::new(), result }))
+        let result = format!(
+            "linux-base executed action '{}' with params '{}'",
+            req.action, req.parameters
+        );
+        Ok(Response::new(proto::PluginExecuteActionResponse {
+            success: true,
+            error: String::new(),
+            result,
+        }))
     }
 
     async fn notify_state_change(
         &self,
         _request: Request<proto::NotifyStateChangeRequest>,
     ) -> Result<Response<proto::NotifyStateChangeResponse>, Status> {
-        Ok(Response::new(proto::NotifyStateChangeResponse { success: true, error: String::new() }))
+        Ok(Response::new(proto::NotifyStateChangeResponse {
+            success: true,
+            error: String::new(),
+        }))
+    }
+}
+
+impl LinuxBasePlugin {
+    async fn apply_storage_config(
+        &self,
+        storage: &sysconfig_config_schema::StorageConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying storage configuration (Linux)");
+
+        // Handle filesystems
+        for filesystem in &storage.filesystems {
+            match filesystem.fstype {
+                FilesystemType::Ext4 => {
+                    if dry_run {
+                        info!(
+                            "DRY-RUN: Would create ext4 filesystem on {}",
+                            filesystem.device
+                        );
+                    } else {
+                        // Create ext4 filesystem
+                        let output = std::process::Command::new("/sbin/mkfs.ext4")
+                            .arg(&filesystem.device)
+                            .output()
+                            .map_err(|e| format!("failed to create ext4 filesystem: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to create ext4 filesystem on {}: {}",
+                                filesystem.device,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+
+                        info!("Created ext4 filesystem on: {}", filesystem.device);
+                    }
+                }
+                FilesystemType::Xfs => {
+                    if dry_run {
+                        info!(
+                            "DRY-RUN: Would create XFS filesystem on {}",
+                            filesystem.device
+                        );
+                    } else {
+                        // Create XFS filesystem
+                        let output = std::process::Command::new("/sbin/mkfs.xfs")
+                            .arg(&filesystem.device)
+                            .output()
+                            .map_err(|e| format!("failed to create XFS filesystem: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to create XFS filesystem on {}: {}",
+                                filesystem.device,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+
+                        info!("Created XFS filesystem on: {}", filesystem.device);
+                    }
+                }
+                FilesystemType::Btrfs => {
+                    if dry_run {
+                        info!(
+                            "DRY-RUN: Would create Btrfs filesystem on {}",
+                            filesystem.device
+                        );
+                    } else {
+                        // Create Btrfs filesystem
+                        let output = std::process::Command::new("/sbin/mkfs.btrfs")
+                            .arg(&filesystem.device)
+                            .output()
+                            .map_err(|e| format!("failed to create Btrfs filesystem: {}", e))?;
+
+                        if !output.status.success() {
+                            return Err(format!(
+                                "failed to create Btrfs filesystem on {}: {}",
+                                filesystem.device,
+                                String::from_utf8_lossy(&output.stderr)
+                            ));
+                        }
+
+                        info!("Created Btrfs filesystem on: {}", filesystem.device);
+                    }
+                }
+                _ => {
+                    warn!(
+                        "Unsupported filesystem type on Linux: {:?}",
+                        filesystem.fstype
+                    );
+                }
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("filesystem:{}", filesystem.device),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "device": filesystem.device,
+                    "fstype": format!("{:?}", filesystem.fstype).to_lowercase(),
+                    "options": filesystem.options
+                })),
+                verbose: false,
+            });
+        }
+
+        // Handle LVM pools
+        for pool in &storage.pools {
+            if let sysconfig_config_schema::StoragePoolType::Lvm = pool.pool_type {
+                if dry_run {
+                    info!("DRY-RUN: Would create LVM volume group {}", pool.name);
+                } else {
+                    // Create LVM volume group
+                    let output = std::process::Command::new("/sbin/vgcreate")
+                        .arg(&pool.name)
+                        .args(&pool.devices)
+                        .output()
+                        .map_err(|e| format!("failed to create LVM volume group: {}", e))?;
+
+                    if !output.status.success() {
+                        return Err(format!(
+                            "failed to create LVM volume group {}: {}",
+                            pool.name,
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+
+                    info!("Created LVM volume group: {}", pool.name);
+                }
+
+                task_changes.push(TaskChange {
+                    change_type: TaskChangeType::Create,
+                    path: format!("lvm-vg:{}", pool.name),
+                    old_value: None,
+                    new_value: Some(serde_json::json!({
+                        "name": pool.name,
+                        "devices": pool.devices,
+                        "properties": pool.properties
+                    })),
+                    verbose: false,
+                });
+            }
+        }
+
+        // Handle mounts
+        for mount in &storage.mounts {
+            if dry_run {
+                info!("DRY-RUN: Would mount {} at {}", mount.source, mount.target);
+            } else {
+                // Create mount point if it doesn't exist
+                if let Err(e) = std::fs::create_dir_all(&mount.target) {
+                    return Err(format!(
+                        "failed to create mount point {}: {}",
+                        mount.target, e
+                    ));
+                }
+
+                // Mount the filesystem
+                let mut cmd = std::process::Command::new("/bin/mount");
+
+                if !mount.options.is_empty() {
+                    let options_str = mount.options.join(",");
+                    cmd.args(&["-o", &options_str]);
+                }
+
+                cmd.args(&[&mount.source, &mount.target]);
+
+                let output = cmd
+                    .output()
+                    .map_err(|e| format!("failed to mount filesystem: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to mount {} at {}: {}",
+                        mount.source,
+                        mount.target,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                info!("Mounted {} at {}", mount.source, mount.target);
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("mount:{}", mount.target),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "source": mount.source,
+                    "target": mount.target,
+                    "options": mount.options
+                })),
+                verbose: false,
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn apply_container_config(
+        &self,
+        containers: &sysconfig_config_schema::ContainerConfig,
+        dry_run: bool,
+        task_changes: &mut Vec<TaskChange>,
+    ) -> Result<(), String> {
+        debug!("Applying container configuration (Linux Docker/Podman)");
+
+        // Handle Linux containers
+        for container in &containers.containers {
+            if dry_run {
+                info!(
+                    "DRY-RUN: Would create/run Linux container {}",
+                    container.name
+                );
+            } else {
+                // Determine runtime command
+                let runtime_cmd = match container.runtime {
+                    sysconfig_config_schema::ContainerRuntime::Docker => "/usr/bin/docker",
+                    sysconfig_config_schema::ContainerRuntime::Podman => "/usr/bin/podman",
+                    _ => "/usr/bin/docker", // default to docker
+                };
+
+                // Pull image if needed
+                let output = std::process::Command::new(runtime_cmd)
+                    .args(&["pull", &container.image])
+                    .output()
+                    .map_err(|e| format!("failed to pull container image: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to pull container image {}: {}",
+                        container.image,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                // Create and run container
+                let mut cmd = std::process::Command::new(runtime_cmd);
+                cmd.args(&["run", "-d", "--name", &container.name]);
+
+                // Add port mappings
+                for port in &container.ports {
+                    cmd.args(&["-p", &format!("{}:{}", port.host_port, port.container_port)]);
+                }
+
+                // Add environment variables
+                for (key, value) in &container.environment {
+                    cmd.args(&["-e", &format!("{}={}", key, value)]);
+                }
+
+                // Add volume mounts
+                for volume in &container.volumes {
+                    cmd.args(&["-v", &format!("{}:{}", volume.source, volume.target)]);
+                }
+
+                cmd.arg(&container.image);
+
+                let output = cmd
+                    .output()
+                    .map_err(|e| format!("failed to run container: {}", e))?;
+
+                if !output.status.success() {
+                    return Err(format!(
+                        "failed to run container {}: {}",
+                        container.name,
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+
+                info!("Created and started container: {}", container.name);
+            }
+
+            task_changes.push(TaskChange {
+                change_type: TaskChangeType::Create,
+                path: format!("container:{}", container.name),
+                old_value: None,
+                new_value: Some(serde_json::json!({
+                    "name": container.name,
+                    "image": container.image,
+                    "runtime": container.runtime,
+                    "state": container.state,
+                    "environment": container.environment,
+                    "ports": container.ports,
+                    "volumes": container.volumes
+                })),
+                verbose: false,
+            });
+        }
+
+        Ok(())
     }
 }
 
@@ -312,7 +675,9 @@ async fn register_with_sysconfig(service_socket: String, plugin_socket: String) 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt().with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).init();
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
 
     let args = Args::parse();
     let plugin_socket = args.socket.unwrap_or_else(default_plugin_socket_path);

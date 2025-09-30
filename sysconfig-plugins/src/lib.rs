@@ -14,35 +14,33 @@ pub mod tasks {
     //! placeholders to establish structure. Concrete implementations can be
     //! added per OS as needed.
 
-    pub mod storage; // ZFS pools, datasets, volumes
-    pub mod users;   // user and group management
+    pub mod containers; // container management (zones, jails, docker, podman)
+    pub mod files; // simple file state with static content
+    pub mod firewall; // firewall rule management
+    pub mod network_links; // network link/interface configuration
+    pub mod network_settings; // other network settings (hostname, DNS, etc.)
     pub mod packages; // package/publisher/image management
     pub mod services; // service (e.g. systemd/SMF) management
-    pub mod firewall; // firewall rule management
-    pub mod files;    // simple file state with static content
-    pub mod network_links;    // network link/interface configuration
-    pub mod network_settings; // other network settings (hostname, DNS, etc.)
+    pub mod storage; // ZFS pools, datasets, volumes
+    pub mod users; // user and group management
 }
 
 pub mod provisioning {
     //! Provisioning plugin functionality for collecting configuration from
     //! various cloud data sources and converting to unified schema.
 
-    pub mod datasources;
     pub mod converter;
+    pub mod datasources;
 
-    pub use datasources::{DataSource, CloudInitPaths, PrioritizedSource, collect_from_source};
     pub use converter::convert_to_unified_schema;
+    pub use datasources::{collect_from_source, CloudInitPaths, DataSource, PrioritizedSource};
 
     // Import the module implementation to access its functions
     use serde_json::Value;
     use std::error::Error;
 
     /// Merge two JSON configurations, with the overlay taking precedence
-    pub fn merge_configurations(
-        base: &mut Value,
-        overlay: Value,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn merge_configurations(base: &mut Value, overlay: Value) -> Result<(), Box<dyn Error>> {
         match (base, overlay) {
             (Value::Object(base_map), Value::Object(overlay_map)) => {
                 for (key, value) in overlay_map {
