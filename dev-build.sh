@@ -177,11 +177,16 @@ fi
 echo ""
 echo "Step 4: Building development cloud image..."
 
+# Change to the image builder directory where templates are located
+MACHINED_IMAGE_DIR="$SCRIPT_DIR/machined/image"
+cd "$MACHINED_IMAGE_DIR"
+
 BUILD_ARGS=(
     "build"
     "-d" "$DATASET"
     "-g" "cloudimage"
     "-n" "ttya-openindiana-hipster-dev"
+    "-T" "$MACHINED_IMAGE_DIR/templates"
     "-E" "$SCRIPT_DIR"
 )
 
@@ -194,6 +199,9 @@ fi
 
 echo "Running: $IMAGE_BUILDER ${BUILD_ARGS[*]}"
 "$IMAGE_BUILDER" "${BUILD_ARGS[@]}"
+
+# Change back to original directory
+cd "$SCRIPT_DIR"
 
 echo ""
 echo "=== Build Complete ==="
