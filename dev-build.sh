@@ -20,11 +20,17 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
+# Source common utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Default values
 DATASET=""
 OUTPUT_DIR=""
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE_BUILDER="${SCRIPT_DIR}/image-builder/target/release/image-builder"
+
+# Get dynamic target directories
+IMAGE_BUILDER_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/image-builder")
+IMAGE_BUILDER="${IMAGE_BUILDER_TARGET_DIR}/release/image-builder"
 
 usage() {
     cat << EOF
@@ -127,19 +133,25 @@ cargo build --release
 cd "$SCRIPT_DIR"
 
 # Verify all binaries were created
-if [[ ! -f "${SCRIPT_DIR}/sysconfig/target/release/sysconfig" ]]; then
-    echo "Error: Failed to build sysconfig binary"
+SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig")
+SYSCONFIG_BINARY="${SYSCONFIG_TARGET_DIR}/release/sysconfig"
+if [[ ! -f "${SYSCONFIG_BINARY}" ]]; then
+    echo "Error: Failed to build sysconfig binary at ${SYSCONFIG_BINARY}"
     exit 1
 fi
 
 # Check for actual plugin binaries that exist
-if [[ ! -f "${SCRIPT_DIR}/sysconfig-plugins/target/release/illumos-base-plugin" ]]; then
-    echo "Error: Failed to build illumos-base-plugin binary"
+PLUGINS_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-plugins")
+ILLUMOS_PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/illumos-base-plugin"
+if [[ ! -f "${ILLUMOS_PLUGIN_BINARY}" ]]; then
+    echo "Error: Failed to build illumos-base-plugin binary at ${ILLUMOS_PLUGIN_BINARY}"
     exit 1
 fi
 
-if [[ ! -f "${SCRIPT_DIR}/sysconfig-provisioning/target/release/provisioning-plugin" ]]; then
-    echo "Error: Failed to build provisioning-plugin binary"
+PROVISIONING_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-provisioning")
+PROVISIONING_PLUGIN_BINARY="${PROVISIONING_TARGET_DIR}/release/provisioning-plugin"
+if [[ ! -f "${PROVISIONING_PLUGIN_BINARY}" ]]; then
+    echo "Error: Failed to build provisioning-plugin binary at ${PROVISIONING_PLUGIN_BINARY}"
     exit 1
 fi
 

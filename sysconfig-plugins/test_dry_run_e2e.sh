@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source common functions
+source "${INSTALLER_ROOT}/lib/common.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -90,6 +93,10 @@ cleanup() {
 # Set up trap for cleanup
 trap cleanup EXIT INT TERM
 
+# Get dynamic target directories
+SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig")
+PLUGINS_TARGET_DIR=$(get_crate_target_dir "$SCRIPT_DIR")
+
 # Build sysconfig
 echo -e "${BLUE}Building sysconfig...${NC}"
 cd "$INSTALLER_ROOT/sysconfig"
@@ -115,7 +122,7 @@ export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug
 echo -e "${BLUE}Starting sysconfig service...${NC}"
 rm -f "$SYSCONFIG_SOCKET" 2>/dev/null || true
 
-"$INSTALLER_ROOT/sysconfig/target/debug/sysconfig" \
+"$SYSCONFIG_TARGET_DIR/debug/sysconfig" \
     --socket "$SYSCONFIG_SOCKET" \
     2>&1 | sed 's/^/[sysconfig] /' &
 
@@ -142,7 +149,7 @@ echo ""
 echo -e "${BLUE}Starting illumos-base-plugin...${NC}"
 rm -f "$PLUGIN_SOCKET" 2>/dev/null || true
 
-"$SCRIPT_DIR/target/debug/illumos-base-plugin" \
+"$PLUGINS_TARGET_DIR/debug/illumos-base-plugin" \
     --socket "$PLUGIN_SOCKET" \
     --service-socket "$SYSCONFIG_SOCKET" \
     2>&1 | sed 's/^/[plugin] /' &
@@ -184,14 +191,14 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo -e "${BLUE}Testing with cloud-init:${NC}"
-if [ -f "$SCRIPT_DIR/target/debug/cloud-init-plugin" ]; then
+if [ -f "$PLUGINS_TARGET_DIR/debug/cloud-init-plugin" ]; then
     echo "  You can now run the cloud-init plugin in another terminal:"
     echo ""
     echo "  export RUST_LOG=info"
     if [ ! -z "$XDG_RUNTIME_DIR" ]; then
         echo "  export XDG_RUNTIME_DIR='$XDG_RUNTIME_DIR'"
     fi
-    echo "  $SCRIPT_DIR/target/debug/cloud-init-plugin \\"
+    echo "  $PLUGINS_TARGET_DIR/debug/cloud-init-plugin \\"
     echo "    --service-socket '$SYSCONFIG_SOCKET' \\"
     echo "    --config /path/to/cloud-init-config.yaml"
 else
@@ -200,12 +207,13 @@ fi
 
 echo ""
 echo -e "${BLUE}Testing with sysconfig-cli:${NC}"
-if [ -f "$INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli" ]; then
+SYSCONFIG_CLI_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig-cli")
+if [ -f "$SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli" ]; then
     echo "  You can use sysconfig-cli to interact with the system:"
     echo ""
     echo "  export SYSCONFIG_SOCKET='$SYSCONFIG_SOCKET'"
-    echo "  $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli status"
-    echo "  $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli apply --file config.kdl"
+    echo "  $SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli status"
+    echo "  $SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli apply --file config.kdl"
 fi
 
 echo ""

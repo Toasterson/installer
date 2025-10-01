@@ -10,6 +10,10 @@ set -o pipefail
 set -o nounset
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source common functions
+source "${SCRIPT_DIR}/lib/common.sh"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -177,7 +181,8 @@ test_external_deps() {
         test_pass "image-builder source found"
 
         # Check if binary exists
-        if [[ -f "${SCRIPT_DIR}/image-builder/target/release/image-builder" ]]; then
+        IMAGE_BUILDER_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/image-builder")
+        if [[ -f "${IMAGE_BUILDER_TARGET_DIR}/release/image-builder" ]]; then
             test_pass "image-builder binary exists"
         else
             test_warn "image-builder binary not built (will be built automatically)"
@@ -302,14 +307,19 @@ test_config_files() {
 test_component_binaries() {
     echo "Testing sysconfig component binaries..."
 
+    # Get dynamic target directories
+    local sysconfig_target=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig")
+    local plugins_target=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-plugins")
+    local provisioning_target=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-provisioning")
+
     local binaries=(
-        "sysconfig/target/release/sysconfig"
-        "sysconfig-plugins/target/release/illumos-base-plugin"
-        "sysconfig-provisioning/target/release/provisioning-plugin"
+        "${sysconfig_target}/release/sysconfig"
+        "${plugins_target}/release/illumos-base-plugin"
+        "${provisioning_target}/release/provisioning-plugin"
     )
 
     for binary in "${binaries[@]}"; do
-        if [[ -f "${SCRIPT_DIR}/${binary}" ]]; then
+        if [[ -f "${binary}" ]]; then
             test_pass "Binary ${binary} exists"
         else
             test_warn "Binary ${binary} not built (will be built during image creation)"

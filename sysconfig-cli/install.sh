@@ -5,12 +5,17 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Get script directory and source common utilities
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALLER_ROOT=$(dirname "$SCRIPT_DIR")
+source "${INSTALLER_ROOT}/lib/common.sh"
+
+# Colors for output (fallback if common.sh doesn't provide them)
+RED=${RED:-'\033[0;31m'}
+GREEN=${GREEN:-'\033[0;32m'}
+YELLOW=${YELLOW:-'\033[1;33m'}
+BLUE=${BLUE:-'\033[0;34m'}
+NC=${NC:-'\033[0m'}
 
 # Default installation directory
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
@@ -98,7 +103,8 @@ build_project() {
 
 # Install the binary
 install_binary() {
-    local binary_path="target/release/sysconfig-cli"
+    local target_dir=$(get_crate_target_dir "$SCRIPT_DIR")
+    local binary_path="$target_dir/release/sysconfig-cli"
 
     if [ ! -f "$binary_path" ]; then
         print_error "Binary not found at $binary_path"

@@ -18,6 +18,11 @@
 
 set -e
 
+# Get script directory and source common utilities
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALLER_ROOT=$(dirname "$SCRIPT_DIR")
+source "${INSTALLER_ROOT}/lib/common.sh"
+
 # Default options
 PREFIX=""
 BUILD=true
@@ -167,32 +172,40 @@ install_binaries() {
     echo "${BLUE}Installing binaries...${NC}"
 
     SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-    INSTALLER_ROOT=$(dirname "$(dirname "$SCRIPT_DIR")")
-
     # Create directories
     run_cmd "mkdir -p '$PREFIX/lib/sysconfig/plugins'"
     run_cmd "mkdir -p '$PREFIX/bin'"
 
+    # Get dynamic target directories
+    SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "${INSTALLER_ROOT}/sysconfig")
+    PLUGINS_TARGET_DIR=$(get_crate_target_dir "${INSTALLER_ROOT}/sysconfig-plugins")
+    PROVISIONING_TARGET_DIR=$(get_crate_target_dir "${INSTALLER_ROOT}/sysconfig-provisioning")
+
     # Install sysconfig
-    run_cmd "cp '$INSTALLER_ROOT/sysconfig/target/release/sysconfig' '$PREFIX/lib/sysconfig/sysconfig'"
+    SYSCONFIG_BINARY="${SYSCONFIG_TARGET_DIR}/release/sysconfig"
+    run_cmd "cp '$SYSCONFIG_BINARY' '$PREFIX/lib/sysconfig/sysconfig'"
     run_cmd "chmod 755 '$PREFIX/lib/sysconfig/sysconfig'"
 
     # Install base plugin
     case "$OS" in
         linux)
-            run_cmd "cp '$INSTALLER_ROOT/sysconfig-plugins/target/release/linux-base-plugin' '$PREFIX/lib/sysconfig/plugins/linux-base-plugin'"
+            PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/linux-base-plugin"
+            run_cmd "cp '$PLUGIN_BINARY' '$PREFIX/lib/sysconfig/plugins/linux-base-plugin'"
             ;;
         freebsd)
-            run_cmd "cp '$INSTALLER_ROOT/sysconfig-plugins/target/release/freebsd-base-plugin' '$PREFIX/lib/sysconfig/plugins/freebsd-base-plugin'"
+            PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/freebsd-base-plugin"
+            run_cmd "cp '$PLUGIN_BINARY' '$PREFIX/lib/sysconfig/plugins/freebsd-base-plugin'"
             ;;
         illumos)
-            run_cmd "cp '$INSTALLER_ROOT/sysconfig-plugins/target/release/illumos-base-plugin' '$PREFIX/lib/sysconfig/plugins/illumos-base-plugin'"
+            PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/illumos-base-plugin"
+            run_cmd "cp '$PLUGIN_BINARY' '$PREFIX/lib/sysconfig/plugins/illumos-base-plugin'"
             ;;
     esac
     run_cmd "chmod 755 '$PREFIX/lib/sysconfig/plugins/'*"
 
     # Install provisioning CLI
-    run_cmd "cp '$INSTALLER_ROOT/sysconfig-provisioning/target/release/provisioning-plugin' '$PREFIX/lib/sysconfig/sysconfig-provision'"
+    PROVISIONING_BINARY="${PROVISIONING_TARGET_DIR}/release/provisioning-plugin"
+    run_cmd "cp '$PROVISIONING_BINARY' '$PREFIX/lib/sysconfig/sysconfig-provision'"
     run_cmd "chmod 755 '$PREFIX/lib/sysconfig/sysconfig-provision'"
 
     # Create symlink for CLI

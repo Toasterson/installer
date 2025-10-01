@@ -8,6 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALLER_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source common functions
+source "${INSTALLER_ROOT}/lib/common.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -187,6 +190,11 @@ cargo build --bin provisioning-plugin 2>&1 | grep -E "(Compiling|Finished)" || t
 echo -e "${GREEN}✓ All components built${NC}"
 echo ""
 
+# Get dynamic target directories
+SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig")
+PLUGINS_TARGET_DIR=$(get_crate_target_dir "$SCRIPT_DIR")
+PROVISIONING_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig-provisioning")
+
 # Set log levels
 export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug,sysconfig_provisioning=debug
 
@@ -194,7 +202,7 @@ export RUST_LOG=info,sysconfig=debug,illumos_base_plugin=debug,sysconfig_provisi
 echo -e "${BLUE}Starting sysconfig service...${NC}"
 rm -f "$SYSCONFIG_SOCKET" 2>/dev/null || true
 
-"$INSTALLER_ROOT/sysconfig/target/debug/sysconfig" \
+"$SYSCONFIG_TARGET_DIR/debug/sysconfig" \
     --socket "$SYSCONFIG_SOCKET" \
     2>&1 | sed 's/^/[sysconfig] /' &
 
@@ -211,7 +219,7 @@ echo -e "${GREEN}✓ Sysconfig started (PID: $SYSCONFIG_PID)${NC}"
 echo -e "${BLUE}Starting illumos-base-plugin...${NC}"
 rm -f "$BASE_PLUGIN_SOCKET" 2>/dev/null || true
 
-"$SCRIPT_DIR/target/debug/illumos-base-plugin" \
+"$PLUGINS_TARGET_DIR/debug/illumos-base-plugin" \
     --socket "$BASE_PLUGIN_SOCKET" \
     --service-socket "$SYSCONFIG_SOCKET" \
     2>&1 | sed 's/^/[base-plugin] /' &
@@ -314,7 +322,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Path to provisioning CLI
-PROVISIONING_CLI="$INSTALLER_ROOT/sysconfig-provisioning/target/debug/provisioning-plugin"
+PROVISIONING_CLI="$PROVISIONING_TARGET_DIR/debug/provisioning-plugin"
 
 echo -e "${CYAN}Testing Instructions:${NC}"
 echo ""
@@ -395,9 +403,10 @@ echo -e "   ${GREEN}$PROVISIONING_CLI apply \\
 echo ""
 
 echo "9. Test with sysconfig-cli directly:"
-echo -e "   ${GREEN}$INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli status
-   $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli get-state
-   $INSTALLER_ROOT/sysconfig-cli/target/debug/sysconfig-cli apply --file $PROVISIONING_KDL${NC}"
+SYSCONFIG_CLI_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig-cli")
+echo -e "   ${GREEN}$SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli status
+   $SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli get-state
+   $SYSCONFIG_CLI_TARGET_DIR/debug/sysconfig-cli apply --file $PROVISIONING_KDL${NC}"
 echo ""
 
 echo "10. Check applied configuration state:"

@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROVISIONING_ROOT="$SCRIPT_DIR"
 INSTALLER_ROOT="$(dirname "$PROVISIONING_ROOT")"
 
+# Source common functions
+source "${INSTALLER_ROOT}/lib/common.sh"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -198,7 +201,11 @@ export RUST_LOG=info,sysconfig=debug,provisioning=debug
 echo -e "${BLUE}Starting sysconfig service...${NC}"
 rm -f "$SYSCONFIG_SOCKET" 2>/dev/null || true
 
-"$INSTALLER_ROOT/sysconfig/target/debug/sysconfig" \
+# Get dynamic target directories
+SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "$INSTALLER_ROOT/sysconfig")
+PROVISIONING_TARGET_DIR=$(get_crate_target_dir "$SCRIPT_DIR")
+
+"$SYSCONFIG_TARGET_DIR/debug/sysconfig" \
     --socket "$SYSCONFIG_SOCKET" \
     2>&1 | sed 's/^/[sysconfig] /' &
 
@@ -212,7 +219,7 @@ fi
 echo -e "${GREEN}✓ Sysconfig started (PID: $SYSCONFIG_PID)${NC}"
 echo ""
 
-PROVISIONING_CLI="$PROVISIONING_ROOT/target/debug/provisioning-plugin"
+PROVISIONING_CLI="$PROVISIONING_TARGET_DIR/debug/provisioning-plugin"
 
 # Function to run a test
 run_test() {

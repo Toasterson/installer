@@ -5,24 +5,28 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Get script directory and source common utilities
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALLER_ROOT=$(dirname "$SCRIPT_DIR")
+source "${INSTALLER_ROOT}/lib/common.sh"
 
-# Check if sysconfig-cli is built
-if [ ! -f "target/debug/sysconfig-cli" ] && [ ! -f "target/release/sysconfig-cli" ]; then
+# Get dynamic target directory
+TARGET_DIR=$(get_crate_target_dir "$SCRIPT_DIR")
+
+# Check if binary exists, build if not
+DEBUG_CLI="$TARGET_DIR/debug/sysconfig-cli"
+RELEASE_CLI="$TARGET_DIR/release/sysconfig-cli"
+
+if [ ! -f "$DEBUG_CLI" ] && [ ! -f "$RELEASE_CLI" ]; then
     echo -e "${YELLOW}Building sysconfig-cli...${NC}"
     cargo build
 fi
 
-# Use debug build if release isn't available
-if [ -f "target/release/sysconfig-cli" ]; then
-    CLI="target/release/sysconfig-cli"
+# Use release if available, debug otherwise
+if [ -f "$RELEASE_CLI" ]; then
+    CLI="$RELEASE_CLI"
 else
-    CLI="target/debug/sysconfig-cli"
+    CLI="$DEBUG_CLI"
 fi
 
 # Socket path (auto-detected based on user, can be overridden by environment variable)
