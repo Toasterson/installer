@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# Sysconfig wrapper script for development environment
+# This script executes the sysconfig binary from /repo/dev-bin/
+#
+
+set -o errexit
+set -o pipefail
+
+REPO_PATH="/repo"
+BINARY_PATH="$REPO_PATH/dev-bin/sysconfig"
+
+# Check if repo is mounted
+if [[ ! -d "$REPO_PATH" ]]; then
+    echo "Error: /repo directory not found. Is the 9P filesystem mounted?" >&2
+    exit 1
+fi
+
+# Check if binary exists
+if [[ ! -x "$BINARY_PATH" ]]; then
+    echo "Error: sysconfig binary not found at $BINARY_PATH" >&2
+    echo "Run on host: ./prepare-dev-binaries.sh" >&2
+    exit 1
+fi
+
+# Execute the binary with all arguments
+echo "Starting sysconfig from: $BINARY_PATH" >&2
+exec "$BINARY_PATH" "$@"

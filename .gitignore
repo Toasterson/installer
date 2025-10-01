@@ -2,3 +2,4 @@ image-builder
 .vagrant
 /installer-docs/book
 /installer-ui/target/
+/dev-bin/

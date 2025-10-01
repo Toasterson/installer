@@ -1,0 +1,28 @@
+#!/bin/bash
+#
+# illumos-base-plugin wrapper script for development environment
+# This script executes the illumos-base-plugin binary from /repo/dev-bin/
+#
+
+set -o errexit
+set -o pipefail
+
+REPO_PATH="/repo"
+BINARY_PATH="$REPO_PATH/dev-bin/illumos-base-plugin"
+
+# Check if repo is mounted
+if [[ ! -d "$REPO_PATH" ]]; then
+    echo "Error: /repo directory not found. Is the 9P filesystem mounted?" >&2
+    exit 1
+fi
+
+# Check if binary exists
+if [[ ! -x "$BINARY_PATH" ]]; then
+    echo "Error: illumos-base-plugin binary not found at $BINARY_PATH" >&2
+    echo "Run on host: ./prepare-dev-binaries.sh" >&2
+    exit 1
+fi
+
+# Execute the binary with all arguments
+echo "Starting illumos-base-plugin from: $BINARY_PATH" >&2
+exec "$BINARY_PATH" "$@"

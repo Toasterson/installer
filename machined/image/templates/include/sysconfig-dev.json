@@ -60,8 +60,8 @@
 
     {
       "t": "ensure_file",
-      "file": "/usr/lib/sysconfig/sysconfig",
-      "extsrc": "sysconfig/target/release/sysconfig",
+      "file": "/usr/lib/sysconfig/sysconfig-wrapper",
+      "src": "files/sysconfig-dev/sysconfig-wrapper",
       "owner": "root",
       "group": "root",
       "mode": "755"
@@ -70,7 +70,7 @@
     {
       "t": "ensure_file",
       "file": "/lib/svc/manifest/system/sysconfig.xml",
-      "extsrc": "sysconfig/image/templates/files/sysconfig-smf-service.xml",
+      "src": "files/sysconfig-dev/sysconfig-smf-service-dev.xml",
       "owner": "root",
       "group": "root",
       "mode": "644"
@@ -78,8 +78,8 @@
 
     {
       "t": "ensure_file",
-      "file": "/usr/lib/sysconfig/plugins/illumos-base-plugin",
-      "extsrc": "sysconfig-plugins/target/release/illumos-base-plugin",
+      "file": "/usr/lib/sysconfig/plugins/illumos-base-plugin-wrapper",
+      "src": "files/sysconfig-dev/illumos-base-plugin-wrapper",
       "owner": "root",
       "group": "root",
       "mode": "755"
@@ -87,8 +87,8 @@
 
     {
       "t": "ensure_file",
-      "file": "/usr/lib/sysconfig-provisioning",
-      "extsrc": "sysconfig-provisioning/target/release/provisioning-plugin",
+      "file": "/usr/lib/sysconfig-provisioning-wrapper",
+      "src": "files/sysconfig-dev/provisioning-plugin-wrapper",
       "owner": "root",
       "group": "root",
       "mode": "755"

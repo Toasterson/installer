@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" ?>
 <!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
 <service_bundle type='manifest' name='sysconfig-provisioning'>
 
@@ -48,7 +48,7 @@
         <exec_method
             type='method'
             name='start'
-            exec='/usr/lib/sysconfig-provisioning --config /repo/sysconfig-plugins/test-provisioning-simple.kdl --socket /var/run/sysconfig.sock'
+            exec='/usr/lib/sysconfig-provisioning-wrapper --config /repo/sysconfig-plugins/test-provisioning-simple.kdl --socket /var/run/sysconfig.sock'
             timeout_seconds='300'
         />
 
@@ -67,10 +67,14 @@
 
         <template>
             <common_name>
-                <loctext xml:lang='C'>SysConfig Provisioning CLI Service</loctext>
+                <loctext
+                    xml:lang='C'
+                >SysConfig Provisioning CLI Service</loctext>
             </common_name>
             <description>
-                <loctext xml:lang='C'>One-shot provisioning CLI for system configuration from cloud-init, local configs, and metadata sources</loctext>
+                <loctext
+                    xml:lang='C'
+                >One-shot provisioning CLI for system configuration from cloud-init, local configs, and metadata sources</loctext>
             </description>
         </template>
     </service>

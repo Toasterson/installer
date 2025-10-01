@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+<?xml version="1.0" ?>
 <!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
 <service_bundle type='manifest' name='sysconfig-illumos-base-plugin'>
 
@@ -29,7 +29,7 @@
         <exec_method
             type='method'
             name='start'
-            exec='/usr/lib/sysconfig/plugins/illumos-base-plugin --socket /var/run/sysconfig/illumos-base.sock --config /repo/sysconfig-plugins/test-provisioning-config.kdl'
+            exec='/usr/lib/sysconfig/plugins/illumos-base-plugin-wrapper --socket /var/run/sysconfig/illumos-base.sock --config /repo/sysconfig-plugins/test-provisioning-config.kdl'
             timeout_seconds='60'
         />
 
@@ -51,7 +51,9 @@
                 <loctext xml:lang='C'>SysConfig illumos Base Plugin</loctext>
             </common_name>
             <description>
-                <loctext xml:lang='C'>illumos base system plugin for SysConfig system configuration daemon</loctext>
+                <loctext
+                    xml:lang='C'
+                >illumos base system plugin for SysConfig system configuration daemon</loctext>
             </description>
         </template>
     </service>

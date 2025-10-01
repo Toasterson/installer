@@ -27,6 +27,7 @@ source "${SCRIPT_DIR}/lib/common.sh"
 # Default values
 DATASET=""
 OUTPUT_DIR=""
+PREPARE_BINARIES_ONLY=false
 
 # Get dynamic target directories
 IMAGE_BUILDER_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/image-builder")
@@ -44,13 +45,15 @@ This script builds the sysconfig binary and then creates a cloud image that:
 3. Allows testing modifications without rebuilding the image
 
 Options:
-  -d, --dataset DATASET    ZFS dataset for image builder (required)
-  -o, --output-dir DIR     Output directory for images (optional)
-  -h, --help               Show this help message
+  -d, --dataset DATASET       ZFS dataset for image builder (required)
+  -o, --output-dir DIR        Output directory for images (optional)
+  --prepare-binaries-only     Only prepare development binaries, don't build image
+  -h, --help                  Show this help message
 
 Examples:
   $0 -d rpool/images
   $0 -d tank/build -o /export/images
+  $0 --prepare-binaries-only
 
 Prerequisites:
 - ZFS dataset must exist for image builder workspace
@@ -72,12 +75,16 @@ while [[ $# -gt 0 ]]; do
             OUTPUT_DIR="$2"
             shift 2
             ;;
+        --prepare-binaries-only)
+            PREPARE_BINARIES_ONLY=true
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
             ;;
         *)
-            echo "Error: Unknown option $1"
+            echo "Error: Unknown option $1" >&2
             usage
             exit 1
             ;;
@@ -85,97 +92,129 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required arguments
-if [[ -z "$DATASET" ]]; then
-    echo "Error: Dataset is required"
+if [[ -z "$DATASET" && "$PREPARE_BINARIES_ONLY" == false ]]; then
+    echo "Error: Dataset is required. Use -d or --dataset to specify." >&2
     usage
     exit 1
 fi
 
-# Check if dataset exists
-if ! zfs list "$DATASET" >/dev/null 2>&1; then
+# Check if dataset exists (only if we're going to build an image)
+if [[ "$PREPARE_BINARIES_ONLY" == false ]] && ! zfs list "$DATASET" >/dev/null 2>&1; then
     echo "Error: ZFS dataset '$DATASET' does not exist"
     exit 1
 fi
 
-echo "=== Development Cloud Image Build ==="
-echo "Dataset: $DATASET"
-echo "Script directory: $SCRIPT_DIR"
-echo ""
+if [[ "$PREPARE_BINARIES_ONLY" == false ]]; then
+    echo "=== Development Cloud Image Build ==="
+    echo "Dataset: $DATASET"
+    echo "Script directory: $SCRIPT_DIR"
+    echo ""
+else
+    echo "=== Preparing Development Binaries ==="
+    echo "Script directory: $SCRIPT_DIR"
+    echo ""
+fi
 
-# Step 1: Build image-builder if it doesn't exist
-echo "Step 1: Checking image-builder..."
-if [[ ! -f "$IMAGE_BUILDER" ]]; then
-    echo "Building image-builder..."
-    cd "${SCRIPT_DIR}/image-builder"
+# Step 1: Build image-builder if it doesn't exist (skip in prepare-binaries-only mode)
+if [[ "$PREPARE_BINARIES_ONLY" == false ]]; then
+    echo "Step 1: Checking image-builder..."
+
+    if [[ ! -f "$IMAGE_BUILDER" ]]; then
+        echo "Building image-builder..."
+        cd "$SCRIPT_DIR/image-builder"
+        cargo build --release
+        cd "$SCRIPT_DIR"
+    else
+        echo "✓ image-builder already exists"
+    fi
+fi
+
+# Step 2: Build sysconfig components (skip in prepare-binaries-only mode)
+if [[ "$PREPARE_BINARIES_ONLY" == false ]]; then
+    echo ""
+    echo "Step 2: Building sysconfig components..."
+
+    echo "  Building sysconfig..."
+    cd "$SCRIPT_DIR/sysconfig"
     cargo build --release
     cd "$SCRIPT_DIR"
-else
-    echo "image-builder already exists"
+
+    echo "  Building sysconfig-plugins..."
+    cd "$SCRIPT_DIR/sysconfig-plugins"
+    cargo build --release
+    cd "$SCRIPT_DIR"
+
+    echo "  Building sysconfig-provisioning..."
+    cd "$SCRIPT_DIR/sysconfig-provisioning"
+    cargo build --release
+    cd "$SCRIPT_DIR"
+
+    echo "✓ All sysconfig components built"
+
+    # Verify all binaries were created
+    SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig")
+    SYSCONFIG_BINARY="${SYSCONFIG_TARGET_DIR}/release/sysconfig"
+    if [[ ! -f "${SYSCONFIG_BINARY}" ]]; then
+        echo "Error: Failed to build sysconfig binary at ${SYSCONFIG_BINARY}"
+        exit 1
+    fi
+
+    # Check for actual plugin binaries that exist
+    PLUGINS_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-plugins")
+    ILLUMOS_PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/illumos-base-plugin"
+    if [[ ! -f "${ILLUMOS_PLUGIN_BINARY}" ]]; then
+        echo "Error: Failed to build illumos-base-plugin binary at ${ILLUMOS_PLUGIN_BINARY}"
+        exit 1
+    fi
+
+    PROVISIONING_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-provisioning")
+    PROVISIONING_PLUGIN_BINARY="${PROVISIONING_TARGET_DIR}/release/provisioning-plugin"
+    if [[ ! -f "${PROVISIONING_PLUGIN_BINARY}" ]]; then
+        echo "Error: Failed to build provisioning-plugin binary at ${PROVISIONING_PLUGIN_BINARY}"
+        exit 1
+    fi
+
+    echo "✓ All required binaries verified"
 fi
-
-# Step 2: Build all sysconfig components
-echo ""
-echo "Step 2: Building sysconfig components..."
-
-echo "  Building main sysconfig daemon..."
-cd "${SCRIPT_DIR}/sysconfig"
-cargo build --release
-cd "$SCRIPT_DIR"
-
-echo "  Building sysconfig-plugins..."
-cd "${SCRIPT_DIR}/sysconfig-plugins"
-cargo build --release
-cd "$SCRIPT_DIR"
-
-echo "  Building sysconfig-provisioning..."
-cd "${SCRIPT_DIR}/sysconfig-provisioning"
-cargo build --release
-cd "$SCRIPT_DIR"
-
-# Verify all binaries were created
-SYSCONFIG_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig")
-SYSCONFIG_BINARY="${SYSCONFIG_TARGET_DIR}/release/sysconfig"
-if [[ ! -f "${SYSCONFIG_BINARY}" ]]; then
-    echo "Error: Failed to build sysconfig binary at ${SYSCONFIG_BINARY}"
-    exit 1
-fi
-
-# Check for actual plugin binaries that exist
-PLUGINS_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-plugins")
-ILLUMOS_PLUGIN_BINARY="${PLUGINS_TARGET_DIR}/release/illumos-base-plugin"
-if [[ ! -f "${ILLUMOS_PLUGIN_BINARY}" ]]; then
-    echo "Error: Failed to build illumos-base-plugin binary at ${ILLUMOS_PLUGIN_BINARY}"
-    exit 1
-fi
-
-PROVISIONING_TARGET_DIR=$(get_crate_target_dir "${SCRIPT_DIR}/sysconfig-provisioning")
-PROVISIONING_PLUGIN_BINARY="${PROVISIONING_TARGET_DIR}/release/provisioning-plugin"
-if [[ ! -f "${PROVISIONING_PLUGIN_BINARY}" ]]; then
-    echo "Error: Failed to build provisioning-plugin binary at ${PROVISIONING_PLUGIN_BINARY}"
-    exit 1
-fi
-
-# Step 3: Check for required tarball
-echo ""
-echo "Step 3: Checking for OpenIndiana hipster tarball..."
-TARBALL_NAME="openindiana-hipster.tar.gz"
-OUTPUT_PATH="${DATASET}/output"
-
-# Check if tarball exists in dataset output
-if ! ls "/$(zfs get -H -o value mountpoint $OUTPUT_PATH 2>/dev/null || echo "nonexistent")/${TARBALL_NAME}" 2>/dev/null; then
-    echo "Warning: ${TARBALL_NAME} not found in dataset output."
-    echo "You may need to build the OpenIndiana templates first:"
+# Step 3: Check for OpenIndiana tarball (skip in prepare-binaries-only mode)
+if [[ "$PREPARE_BINARIES_ONLY" == false ]]; then
     echo ""
-    echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-01-strap"
-    echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-02-image"
-    echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-03-archive"
-    echo ""
-    echo "Continuing anyway - the image build will fail if the tarball is missing."
+    echo "Step 3: Checking for OpenIndiana hipster tarball..."
+    TARBALL_NAME="hipster-03-archive.tar.gz"
+    OUTPUT_PATH="${DATASET}/output"
+
+    if ! ls "/$(zfs get -H -o value mountpoint $OUTPUT_PATH 2>/dev/null || echo "nonexistent")/${TARBALL_NAME}" 2>/dev/null; then
+        echo "Warning: ${TARBALL_NAME} not found in dataset output."
+        echo "You may need to build the OpenIndiana templates first:"
+        echo ""
+        echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-01-strap"
+        echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-02-image"
+        echo "  $IMAGE_BUILDER build -d $DATASET -g openindiana -n hipster-03-archive"
+        echo ""
+        echo "Continuing anyway - the image build will fail if the tarball is missing."
+    fi
 fi
 
 # Step 4: Build the development cloud image
 echo ""
-echo "Step 4: Building development cloud image..."
+echo "Step 4: Preparing development binaries..."
+"$SCRIPT_DIR/prepare-dev-binaries.sh"
+
+# Exit here if we only want to prepare binaries
+if [[ "$PREPARE_BINARIES_ONLY" == true ]]; then
+    echo ""
+    echo "=== Development Binaries Prepared ==="
+    echo ""
+    echo "Binaries are ready in $SCRIPT_DIR/dev-bin/"
+    echo "These will be available to the VM at /repo/dev-bin/ when mounted via 9P"
+    echo ""
+    echo "To build the full development image, run:"
+    echo "  $0 -d <DATASET>"
+    exit 0
+fi
+
+echo ""
+echo "Step 5: Building development cloud image..."
 
 # Change to the image builder directory where templates are located
 MACHINED_IMAGE_DIR="$SCRIPT_DIR/machined/image"
@@ -218,11 +257,13 @@ echo "1. Boot the image in bhyve or libvirt with 9p filesystem sharing"
 echo "2. The VM will automatically mount the repo at /repo via 9p"
 echo "3. All sysconfig components start with proper SMF dependencies"
 echo "4. Configuration loaded from /repo/sysconfig-plugins/test-provisioning-config.kdl"
-echo "5. Make changes to any component on the host"
-echo "6. Rebuild: cd <component> && cargo build --release"
-echo "7. Restart services in VM: svcadm restart svc:/system/installer/sysconfig"
-echo "8. Or restart plugins: svcadm restart svc:/system/sysconfig/illumos-base"
-echo "9. Or restart provisioning: svcadm restart svc:/system/sysconfig-provisioning"
+echo "5. Binaries loaded from /repo/dev-bin/ (prepared by prepare-dev-binaries.sh)"
+echo "6. Make changes to any component on the host"
+echo "7. Rebuild: cd <component> && cargo build --release"
+echo "8. Update binaries in VM: ./prepare-dev-binaries.sh (on host)"
+echo "9. Restart services in VM: svcadm restart svc:/system/installer/sysconfig"
+echo "10. Or restart plugins: svcadm restart svc:/system/sysconfig/illumos-base"
+echo "11. Or restart provisioning: svcadm restart svc:/system/sysconfig-provisioning"
 echo ""
 echo "Example bhyve command with 9p support:"
 echo "bhyve -c 2 -m 2048M -w -H \\"
