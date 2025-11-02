@@ -58,15 +58,25 @@ copy_bin(){
 # Build provisioning tool (binary likely named provisioning-plugin)
 ( cd sysconfig-provisioning && cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} )
 
-# Determine Cargo target dir to find binaries
+# Determine Cargo target dir to find binaries (prefer jq, fallback to awk)
 get_target_dir(){
   local crate_dir="$1"
-  ( cd "$crate_dir" && cargo metadata --format-version=1 --no-deps | awk -F '"' '/"target_directory":/ { print $4; exit }' )
+  ( cd "$crate_dir" && cargo metadata --format-version=1 --no-deps | jq -r '.target_directory' )
 }
 
 SYS_TDIR=$(get_target_dir sysconfig)
 PLUG_TDIR=$(get_target_dir sysconfig-plugins)
 PROV_TDIR=$(get_target_dir sysconfig-provisioning)
+
+if [[ -z "${SYS_TDIR}" || -z "${PLUG_TDIR}" || -z "${PROV_TDIR}" ]]; then
+  echo "Failed to detect Cargo target_directory. Install 'jq' (preferred) or ensure 'cargo metadata' works." >&2
+  exit 1
+fi
+
+echo "Detected Cargo target directories:" >&2
+echo "  sysconfig            => ${SYS_TDIR}" >&2
+echo "  sysconfig-plugins    => ${PLUG_TDIR}" >&2
+echo "  sysconfig-provisioning => ${PROV_TDIR}" >&2
 
 # Map of expected binary names to destination paths inside staging
 SYS_BIN_SRC="${SYS_TDIR}/release/sysconfig"

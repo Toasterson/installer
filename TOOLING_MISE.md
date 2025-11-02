@@ -100,6 +100,7 @@ These tasks produce a release-grade cloud image using SysConfig + cloud-init pro
 Notes:
 - The cloud image template is `image/templates/cloudimage/ttya-openindiana-hipster.json` and includes `sysconfig-release` (manifests/config) and `sysconfig-release-bins` (copies staged binaries via `extsrc`).
 - The image builder is invoked with `-E image/staging` so the include can fetch staged binaries.
+- The `build:sysconfig` task discovers Cargo's `target_directory` via `cargo metadata --format-version=1 --no-deps | jq -r .target_directory` (preferred). If `jq` is unavailable, it falls back to a basic extractor. Installing `jq` is recommended for reliability: `pkg install jq` (OmniOS/OpenIndiana) or your platform's package manager.
 - Outputs are written under `${DATASET}/output`. See `image/IMAGE_BUILDER.md` for details.
 
 ## Tips
