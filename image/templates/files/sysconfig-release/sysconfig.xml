@@ -30,7 +30,7 @@
     <exec_method
       type='method'
       name='start'
-      exec='/usr/lib/sysconfig/sysconfig --socket /var/run/sysconfig.sock'
+      exec='/usr/bin/sh -c "/usr/lib/sysconfig/sysconfig --socket /var/run/sysconfig.sock &amp;"'
       timeout_seconds='60'>
       <method_context>
         <method_credential user='root' group='root' />
