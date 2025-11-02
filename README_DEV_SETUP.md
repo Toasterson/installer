@@ -10,11 +10,30 @@ This directory contains a development cloud image template that enables rapid te
 - **KDL Configuration Loading**: Test configs loaded directly from mounted repository
 - **Verifiable File Organization**: All configuration files as separate, editable files
 
+## Using mise (recommended)
+
+Simplify common development flows with mise tasks.
+
+```bash
+# 1) Install mise (see TOOLING_MISE.md)
+# 2) Trust repo and install toolchains
+mise trust
+mise run tools:install
+
+# 3) Common tasks
+mise run vm:up                 # Start dev VM (wraps Makefile)
+mise run dev:build-image -- -d rpool/images
+mise run rust:build-all        # Build all Rust crates
+mise run ui:install && mise run ui:dev
+```
+
+See `TOOLING_MISE.md` for full details and the task catalog.
+
 ## Quick Start
 
 ```bash
 # Build the development image (requires ZFS dataset)
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 
 # Boot with 9P sharing (example for bhyve)
 bhyve -c 2 -m 2048M -w -H \
@@ -44,16 +63,16 @@ bhyve -c 2 -m 2048M -w -H \
   - `dev-test.kdl` - Development KDL test configuration
   - `vfstab` - System mount table with 9P entry
 
-### Scripts & Documentation
-- `dev-build.sh` - Automated build script for all sysconfig components
-- `test-dev-setup.sh` - Comprehensive validation script (34 tests)
-- `DEV_CLOUD_IMAGE.md` - Comprehensive usage and troubleshooting guide
-- `IMPROVED_FILE_ORGANIZATION.md` - Details on file organization improvements
-- `README_DEV_SETUP.md` - This summary file
+### Tasks & Documentation
+- `mise run dev:build-image` — Automated build task for all sysconfig components
+- `mise run dev:test-setup` — Comprehensive validation task (34 tests)
+- `DEV_CLOUD_IMAGE.md` — Comprehensive usage and troubleshooting guide
+- `IMPROVED_FILE_ORGANIZATION.md` — Details on file organization improvements
+- `README_DEV_SETUP.md` — This summary file
 
 ## Development Workflow
 
-1. **Build**: `./dev-build.sh -d <dataset>` - Builds all components (sysconfig, sysconfig-plugins, sysconfig-provisioning)
+1. **Build**: `mise run dev:build-image -- -d <dataset>` - Builds all components (sysconfig, sysconfig-plugins, sysconfig-provisioning)
 2. **Boot VM**: With 9P filesystem sharing the repo directory at `/repo`
 3. **Code**: Edit any sysconfig component code on the host
 4. **Test**: Build specific component, then restart corresponding service in VM:

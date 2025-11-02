@@ -12,13 +12,39 @@ The development cloud image allows you to:
 - Load KDL configurations from the mounted repository for testing
 - Get fast feedback cycles (seconds instead of hours)
 
+## Using mise (recommended)
+
+mise is a unified toolchain manager and task runner we use to simplify common dev flows.
+
+Quick setup:
+
+```bash
+# 1) Install mise (see TOOLING_MISE.md for options)
+# 2) Trust the repo and install toolchains
+mise trust
+mise run tools:install
+
+# 3) Start the dev VM (wraps Makefile)
+mise run vm:up
+# SSH or console
+mise run vm:ssh
+mise run vm:console
+```
+
+Common tasks:
+- Rust: `mise run rust:build-all`, `mise run rust:test-all`, `mise run rust:fmt`, `mise run rust:clippy`
+- UI: `mise run ui:install`, `mise run ui:dev`, `mise run ui:build`
+- Dev image: `mise run dev:build-image -- -d rpool/images`, `mise run dev:test-setup`
+
+See `TOOLING_MISE.md` for the full task catalog.
+
 ## Quick Start
 
 ### 1. Build the Development Image
 
 ```bash
 # Build the development image (requires ZFS dataset)
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 ```
 
 This creates `cloudimage-ttya-openindiana-hipster-dev.raw` in your dataset's output directory.
@@ -27,7 +53,7 @@ This creates `cloudimage-ttya-openindiana-hipster-dev.raw` in your dataset's out
 
 #### Using bhyve
 ```bash
-./examples/start-dev-vm-bhyve.sh \
+mise run vm:bhyve:start -- \
   -i /path/to/cloudimage-ttya-openindiana-hipster-dev.raw \
   -r /path/to/illumos/installer
 ```
@@ -284,17 +310,17 @@ The VM includes network drivers and DHCP client:
 1. **Logs**: Always check SMF logs first
 2. **Service Status**: Use `svcs -xv` to diagnose service issues
 3. **Documentation**: See `DEV_CLOUD_IMAGE.md` for comprehensive details
-4. **Validation**: Run `./test-dev-setup.sh` to check your setup
+4. **Validation**: Run `mise run dev:test-setup` to check your setup
 
 ## Example Session
 
 ```bash
 # Terminal 1 (Host): Start development
 cd illumos/installer
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 
 # Terminal 2 (Host): Start VM
-./examples/start-dev-vm-bhyve.sh -i /images/dev.raw -r $PWD
+mise run vm:bhyve:start -- -i /images/dev.raw -r $PWD
 
 # VM Console: Check services after boot
 svcs svc:/system/installer/sysconfig
@@ -310,3 +336,8 @@ tail -f /var/svc/log/system-installer-sysconfig:default.log
 ```
 
 This development environment transforms your workflow from hours-long image rebuild cycles to seconds-long service restart cycles, making illumos installer development much more efficient and enjoyable.
+
+
+## AI-authored documentation location
+
+To keep the docs organized, any AI-authored guides or status reports that are not explicitly requested as permanent top-level docs must be placed under `docs/ai/` and named with a `YYYY-MM-DD-` date prefix. See `docs/DOCUMENTATION_GUIDELINES.md` for details.

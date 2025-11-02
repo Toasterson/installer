@@ -15,6 +15,9 @@
       <sourceFolder url="file://$MODULE_DIR$/sysconfig/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/installer-ui/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sysconfig-plugins/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sysconfig-plugins/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sysconfig/examples" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sysconfig/tests" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/imgdepot/target" />
       <excludeFolder url="file://$MODULE_DIR$/installadm/target" />
       <excludeFolder url="file://$MODULE_DIR$/instcomd/target" />

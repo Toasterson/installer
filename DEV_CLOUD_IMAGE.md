@@ -28,10 +28,10 @@ git clone <repository-url>
 cd illumos/installer
 
 # Build the development image
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 ```
 
-This script will:
+This task will:
 1. Build the image-builder if needed
 2. Build the sysconfig binary
 3. Check for required OpenIndiana tarballs
@@ -54,7 +54,7 @@ If you haven't built the OpenIndiana base images yet:
 
 ```bash
 # Build the development cloud image
-./dev-build.sh -d rpool/images -o /export/images
+mise run dev:build-image -- -d rpool/images -o /export/images
 ```
 
 Options:

@@ -24,13 +24,13 @@ A complete development environment for the illumos installer that allows rapid t
   - UTC timezone configuration for cloud environments
 
 ### 2. Build & Test Scripts
-- **`dev-build.sh`** - Automated build script that:
-  - Builds sysconfig binary
+- **`mise run dev:build-image`** — Task that:
+  - Builds sysconfig binaries
   - Builds image-builder if needed
   - Creates the development cloud image
   - Validates prerequisites
 
-- **`test-dev-setup.sh`** - Comprehensive validation script that checks:
+- **`mise run dev:test-setup`** — Comprehensive validation task that checks:
   - Directory structure
   - JSON template syntax
   - Rust toolchain availability
@@ -40,7 +40,7 @@ A complete development environment for the illumos installer that allows rapid t
 
 ### 3. Examples & Documentation
 - **`examples/dev-vm-libvirt.xml`** - Complete libvirt domain configuration
-- **`examples/start-dev-vm-bhyve.sh`** - bhyve startup script with 9P support
+- **`mise run vm:bhyve:start`** — Start bhyve-based dev VM with 9P support
 - **`DEV_CLOUD_IMAGE.md`** - Comprehensive documentation (311 lines)
 - **`README_DEV_SETUP.md`** - Quick start guide
 
@@ -48,7 +48,7 @@ A complete development environment for the illumos installer that allows rapid t
 
 ### 1. Build Process
 ```bash
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 ```
 
 Creates a cloud image that:
@@ -162,13 +162,13 @@ All 20 validation tests pass:
 
 ```bash
 # Validate setup
-./test-dev-setup.sh
+mise run dev:test-setup
 
 # Build development image
-./dev-build.sh -d rpool/images
+mise run dev:build-image -- -d rpool/images
 
 # Start with bhyve (example)
-./examples/start-dev-vm-bhyve.sh -i /path/to/image.raw -r /path/to/repo
+mise run vm:bhyve:start -- -i /path/to/image.raw -r /path/to/repo
 
 ```bash
 # Check VM services (in VM)
