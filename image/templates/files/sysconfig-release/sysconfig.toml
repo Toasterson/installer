@@ -1,0 +1,24 @@
+# Release sysconfig configuration
+
+# Socket path for main sysconfig daemon
+socket_path = "/var/run/sysconfig.sock"
+
+[state]
+# State directory for sysconfig runtime (managed by SMF service properties as well)
+state_dir = "/var/lib/sysconfig"
+
+[logging]
+# Sysconfig logging
+level = "info"
+file = "/var/log/sysconfig.log"
+
+[plugins]
+# In release images, plugins are installed in the system path
+# Discovery is automatic; explicit path not required.
+# path = "/usr/lib/sysconfig/plugins"
+
+[provisioning]
+# Provisioning tool is started by SMF (sysconfig-provision.xml)
+# The service defaults include cloud-init among sources; override here if needed.
+# sources = ["local", "cloud-init", "ec2", "azure", "gcp", "digitalocean", "openstack"]
+# disabled_sources = []

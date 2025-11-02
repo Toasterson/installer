@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# @describe Build the cloud image using sysconfig (with staged binaries)
+# @arg reset[none|reset|full] Build reset mode. none (default) | reset (-r) | full (-x)
+# @option --dataset The ZFS dataset root (defaults to env DATASET or rpool/images)
+# @option --output-name The output image name (default: ttya-openindiana-hipster)
+# @option --templates Template root directory (default: image/templates)
+# @option --external-src Additional external source root (default: image/staging)
+# @option --group Template group (default: cloudimage)
+# @option --name Template name (default: ttya-openindiana-hipster)
+
+set -euo pipefail
+
+TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${TASK_DIR}/../../.."
+cd "$ROOT_DIR"
+
+RESET="none"
+DATASET_DEFAULT="${DATASET:-rpool/images}"
+DATASET_ARG="$DATASET_DEFAULT"
+TEMPLATES_DIR="image/templates"
+EXTERNAL_SRC="image/staging"
+GROUP="cloudimage"
+NAME="ttya-openindiana-hipster"
+OUTPUT_NAME="ttya-openindiana-hipster"
+
+# Parse positional reset and named options following mise file task conventions
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    none|reset|full)
+      RESET="$1"; shift ;;
+    --dataset)
+      DATASET_ARG="$2"; shift 2 ;;
+    --output-name)
+      OUTPUT_NAME="$2"; shift 2 ;;
+    --templates)
+      TEMPLATES_DIR="$2"; shift 2 ;;
+    --external-src)
+      EXTERNAL_SRC="$2"; shift 2 ;;
+    --group)
+      GROUP="$2"; shift 2 ;;
+    --name)
+      NAME="$2"; shift 2 ;;
+    *)
+      echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Ensure image-builder binary
+if ! command -v image-builder >/dev/null 2>&1; then
+  if [[ -x image/setup.sh ]]; then
+    echo "image-builder not found; attempting image/setup.sh ..."
+    (cd image && ./setup.sh)
+  fi
+fi
+
+ARGS=( build -d "$DATASET_ARG" -g "$GROUP" -n "$NAME" -T "$TEMPLATES_DIR" -N "$OUTPUT_NAME" -E "$EXTERNAL_SRC" )
+case "$RESET" in
+  reset) ARGS+=( -r ) ;;
+  full)  ARGS+=( -x ) ;;
+  none)  : ;;
+  *) echo "Invalid reset: $RESET" >&2; exit 2 ;;
+esac
+
+# Run builder (needs pfexec for ZFS)
+pfexec image-builder "${ARGS[@]}"

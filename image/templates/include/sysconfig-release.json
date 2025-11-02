@@ -1,0 +1,24 @@
+{
+  "steps": [
+    { "t": "ensure_directory", "dir": "/etc/sysconfig", "owner": "root", "group": "root", "mode": "755" },
+    { "t": "ensure_directory", "dir": "/var/run/sysconfig", "owner": "root", "group": "root", "mode": "755" },
+    { "t": "ensure_directory", "dir": "/usr/lib/sysconfig", "owner": "root", "group": "root", "mode": "755" },
+    { "t": "ensure_directory", "dir": "/usr/lib/sysconfig/plugins", "owner": "root", "group": "root", "mode": "755" },
+
+    { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig.xml",
+      "src": "files/sysconfig-release/sysconfig.xml",
+      "owner": "root", "group": "root", "mode": "644" },
+
+    { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig-illumos-base.xml",
+      "src": "files/sysconfig-release/sysconfig-illumos-base.xml",
+      "owner": "root", "group": "root", "mode": "644" },
+
+    { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig-provision.xml",
+      "src": "files/sysconfig-release/sysconfig-provision.xml",
+      "owner": "root", "group": "root", "mode": "644" },
+
+    { "t": "ensure_file", "file": "/etc/sysconfig.toml",
+      "src": "files/sysconfig-release/sysconfig.toml",
+      "owner": "root", "group": "root", "mode": "644" }
+  ]
+}

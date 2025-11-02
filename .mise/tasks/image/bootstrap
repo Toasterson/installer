@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Build bootstrap (strap) artifacts used by the cloud image
+# Usage:
+#   mise run image:bootstrap [-- [--reset none|full] [--with-build-tools] [--with-extra]]
+# Defaults: --reset none
+set -euo pipefail
+
+TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${TASK_DIR}/../../.."
+cd "$ROOT_DIR/image"
+
+RESET="none"
+WITH_BUILD_TOOLS=0
+WITH_EXTRA=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --reset)
+      RESET="${2:-none}"; shift 2 ;;
+    --with-build-tools)
+      WITH_BUILD_TOOLS=1; shift ;;
+    --with-extra)
+      WITH_EXTRA=1; shift ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+ARGS=()
+# Map reset to strap flags (strap.sh supports -f for full reset only)
+if [[ "$RESET" == "full" ]]; then
+  ARGS+=("-f")
+elif [[ "$RESET" != "none" ]]; then
+  echo "Invalid --reset value: $RESET (expected none|full)" >&2
+  exit 2
+fi
+
+[[ $WITH_BUILD_TOOLS -eq 1 ]] && ARGS+=("-B")
+[[ $WITH_EXTRA -eq 1 ]] && ARGS+=("-E")
+
+# Ensure image-builder is available
+if ! command -v image-builder >/dev/null 2>&1; then
+  if [[ -x ./setup.sh ]]; then
+    echo "image-builder not found; attempting ./setup.sh ..."
+    ./setup.sh
+  fi
+fi
+
+./strap.sh ${ARGS[*]:-}

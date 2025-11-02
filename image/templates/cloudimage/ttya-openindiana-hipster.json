@@ -35,7 +35,8 @@
         { "t": "shadow", "username": "root", "password":
             "$5$kr1VgdIt$OUiUAyZCDogH/uaxH71rMeQxvpDEY2yX.x0ZQRnmeb9" },
 
-        {"t": "include", "name": "metadata"},
+        {"t": "include", "name": "sysconfig-release"},
+        {"t": "include", "name": "sysconfig-release-bins"},
 
         { "t": "include", "name": "finalise" }
     ]

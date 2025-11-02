@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Install frontend dependencies using Yarn (via Corepack)
+set -euo pipefail
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${SCRIPT_DIR}/../../.."
+cd "$ROOT_DIR/installer-ui/frontend-ng"
+corepack enable
+YARN_ENABLE_IMMUTABLE_INSTALLS=true yarn install --immutable

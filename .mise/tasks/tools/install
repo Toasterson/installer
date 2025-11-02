@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Install toolchains (Rust, Node) defined in .mise.toml
+set -euo pipefail
+mise install

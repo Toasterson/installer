@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Start the development VM using the project Makefile
+set -euo pipefail
+make -C "$(dirname "$0")/../../.." up

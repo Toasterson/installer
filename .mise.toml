@@ -1,0 +1,17 @@
+# mise: toolchain and task runner configuration for illumos/installer
+# Docs: https://mise.jdx.dev/
+
+[tools]
+# Rust toolchain used across the project
+rust = "stable"
+# Node runtime used by Angular frontend (uses Corepack to provision Yarn 4)
+node = "lts"
+
+[env]
+# Ensure colored cargo output in CI/TTY
+CARGO_TERM_COLOR = "always"
+
+[settings]
+# Opt-in: allow running local tasks without prompting once the repo is trusted
+# Run: `mise trust` in the repo root to trust tasks in this directory
+trusted_config_paths = ["."]

@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Destroy and undefine the development VM via Makefile helper
+set -euo pipefail
+make -C "$(dirname "$0")/../../.." destroy

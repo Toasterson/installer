@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Type-check all Rust crates
+set -euo pipefail
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${SCRIPT_DIR}/../../.."
+cd "$ROOT_DIR"
+
+CRATES=(
+  image-builder
+  imgdepot
+  installadm
+  installer-ui
+  instcomd
+  instcomd/migration
+  machineconfig
+  machined
+  ociclient
+  sysconfig
+  sysconfig-cli
+  sysconfig-config-schema
+  sysconfig-plugins
+  sysconfig-provisioning
+)
+
+for crate in "${CRATES[@]}"; do
+  if [[ -f "$crate/Cargo.toml" ]]; then
+    echo "==> Checking $crate"
+    (cd "$crate" && cargo check --all-targets ${CARGO_PROFILE:-})
+  fi
+done

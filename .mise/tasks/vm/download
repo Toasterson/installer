@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Force download of the cloud image via Makefile
+set -euo pipefail
+make -C "$(dirname "$0")/../../.." download

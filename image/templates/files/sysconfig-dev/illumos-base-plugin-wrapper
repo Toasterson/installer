@@ -19,7 +19,7 @@ fi
 # Check if binary exists
 if [[ ! -x "$BINARY_PATH" ]]; then
     echo "Error: illumos-base-plugin binary not found at $BINARY_PATH" >&2
-    echo "Run on host: ./prepare-dev-binaries.sh" >&2
+    echo "Run on host: mise run dev:prepare-binaries" >&2
     exit 1
 fi
 

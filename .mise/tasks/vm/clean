@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Clean generated/downloaded VM artifacts via Makefile
+set -euo pipefail
+make -C "$(dirname "$0")/../../.." clean

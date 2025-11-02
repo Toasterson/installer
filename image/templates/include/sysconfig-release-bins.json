@@ -1,0 +1,15 @@
+{
+  "steps": [
+    { "t": "ensure_file", "file": "/usr/lib/sysconfig/sysconfig",
+      "extsrc": "sysconfig-release/usr/lib/sysconfig/sysconfig",
+      "owner": "root", "group": "root", "mode": "755" },
+
+    { "t": "ensure_file", "file": "/usr/lib/sysconfig/plugins/illumos-base-plugin",
+      "extsrc": "sysconfig-release/usr/lib/sysconfig/plugins/illumos-base-plugin",
+      "owner": "root", "group": "root", "mode": "755" },
+
+    { "t": "ensure_file", "file": "/usr/lib/sysconfig/sysconfig-provision",
+      "extsrc": "sysconfig-release/usr/lib/sysconfig/sysconfig-provision",
+      "owner": "root", "group": "root", "mode": "755" }
+  ]
+}
