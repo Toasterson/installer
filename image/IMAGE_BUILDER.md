@@ -127,6 +127,7 @@ Template JSON describes build steps (creating datasets, unpacking tars, setting 
 - Permission errors: ensure you are using `pfexec` (or an equivalent with the required ZFS and loopback device privileges).
 - `image-builder` not found: run `mise run image:setup` to install it, or pass `IMAGE_BUILDER=/absolute/path/to/image-builder`. Tasks also search `~/.cargo/bin/image-builder` automatically.
 - SMF/`svccfg` issues: pass `-S /path/to/svccfg-native` built from your illumos tree if system `svccfg` is incompatible.
+- SMF seeding on OpenIndiana: avoid `apply_site: true` if `/var/svc/profile/site.xml` is absent. Use `seed_smf` with `apply_profiles: ["generic", "platform"]` (as in `include/finalise.json`).
 
 ## See also
 

@@ -14,7 +14,7 @@
       <service_fmri value='svc:/network/loopback:default' />
     </dependency>
 
-    <dependency name='manifest-import' grouping='optional_all' restart_on='none'>
+    <dependency name='manifest-import' type='service' grouping='optional_all' restart_on='none'>
       <service_fmri value='svc:/system/manifest-import:default' />
     </dependency>
 

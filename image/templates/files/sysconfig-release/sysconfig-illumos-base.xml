@@ -74,13 +74,15 @@
       <propval name='socket_path' type='astring' value='/var/run/sysconfig-illumos-base.sock' />
       <propval name='service_socket' type='astring' value='/var/run/sysconfig.sock' />
       <propval name='dry_run' type='boolean' value='false' />
-      <propval name='managed_paths' type='astring'>
-        <value_node value='hostname' />
-        <value_node value='nameservers' />
-        <value_node value='search_domains' />
-        <value_node value='interfaces' />
-        <value_node value='routes' />
-      </propval>
+      <property name='managed_paths' type='astring'>
+        <astring_list>
+          <value_node value='hostname' />
+          <value_node value='nameservers' />
+          <value_node value='search_domains' />
+          <value_node value='interfaces' />
+          <value_node value='routes' />
+        </astring_list>
+      </property>
     </property_group>
 
     <!-- Service properties -->
