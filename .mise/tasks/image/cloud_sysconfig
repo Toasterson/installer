@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 # @describe Build the cloud image using sysconfig (with staged binaries)
 # @arg reset[none|reset|full] Build reset mode. none (default) | reset (-r) | full (-x)
 # @option --dataset The ZFS dataset root (defaults to env DATASET or rpool/images)

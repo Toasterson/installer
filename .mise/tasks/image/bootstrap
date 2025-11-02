@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 # Build bootstrap (strap) artifacts used by the cloud image
 # Usage:
 #   mise run image:bootstrap [-- [--reset none|full] [--with-build-tools] [--with-extra]]
