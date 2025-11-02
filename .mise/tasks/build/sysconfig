@@ -39,6 +39,20 @@ if [[ $CLEAN -eq 1 ]]; then
 fi
 mkdir -p "$BIN_DIR_SYS" "$BIN_DIR_PLUGINS"
 
+# Resolve GNU install (ginstall) on illumos; fall back to a compatible install
+INSTALL_BIN="install"
+INSTALL_IS_GNU=0
+if command -v ginstall >/dev/null 2>&1; then
+  INSTALL_BIN="$(command -v ginstall)"
+  INSTALL_IS_GNU=1
+elif command -v install >/dev/null 2>&1 && install --version 2>/dev/null | grep -qi 'gnu coreutils'; then
+  INSTALL_BIN="$(command -v install)"
+  INSTALL_IS_GNU=1
+elif [[ -x "/usr/gnu/bin/install" ]]; then
+  INSTALL_BIN="/usr/gnu/bin/install"
+  INSTALL_IS_GNU=1
+fi
+
 # Helper to copy a built binary into staging with desired filename
 copy_bin(){
   local src_bin="$1"; shift
@@ -47,7 +61,12 @@ copy_bin(){
     echo "Expected binary not found: $src_bin" >&2
     exit 1
   fi
-  install -m 0755 -o root -g root "$src_bin" "$dst_path" 2>/dev/null || install -m 0755 "$src_bin" "$dst_path"
+  if [[ $INSTALL_IS_GNU -eq 1 ]]; then
+    "$INSTALL_BIN" -m 0755 -o root -g root "$src_bin" "$dst_path" 2>/dev/null || "$INSTALL_BIN" -m 0755 "$src_bin" "$dst_path"
+  else
+    # SysV install on illumos doesn't support -o/-g; just install/cp and set mode
+    "$INSTALL_BIN" -m 0755 "$src_bin" "$dst_path" 2>/dev/null || { cp "$src_bin" "$dst_path" && chmod 0755 "$dst_path"; }
+  fi
 }
 
 # Build crates (release)
