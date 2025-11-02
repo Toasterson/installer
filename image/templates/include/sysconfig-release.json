@@ -6,19 +6,19 @@
     { "t": "ensure_directory", "dir": "/usr/lib/sysconfig/plugins", "owner": "root", "group": "root", "mode": "755" },
 
     { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig.xml",
-      "src": "files/sysconfig-release/sysconfig.xml",
+      "src": "sysconfig-release/sysconfig.xml",
       "owner": "root", "group": "root", "mode": "644" },
 
     { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig-illumos-base.xml",
-      "src": "files/sysconfig-release/sysconfig-illumos-base.xml",
+      "src": "sysconfig-release/sysconfig-illumos-base.xml",
       "owner": "root", "group": "root", "mode": "644" },
 
     { "t": "ensure_file", "file": "/lib/svc/manifest/system/sysconfig-provision.xml",
-      "src": "files/sysconfig-release/sysconfig-provision.xml",
+      "src": "sysconfig-release/sysconfig-provision.xml",
       "owner": "root", "group": "root", "mode": "644" },
 
     { "t": "ensure_file", "file": "/etc/sysconfig.toml",
-      "src": "files/sysconfig-release/sysconfig.toml",
+      "src": "sysconfig-release/sysconfig.toml",
       "owner": "root", "group": "root", "mode": "644" }
   ]
 }
