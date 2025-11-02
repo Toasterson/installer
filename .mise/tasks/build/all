@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# @describe Build sysconfig binaries, bootstrap artifacts, and cloud image
+# @flag --full-reset Perform a full reset of bootstrap and cloud image datasets
+# @option --dataset The ZFS dataset root (defaults to env DATASET or rpool/images)
+# @arg mode[full|incremental]? Optional shorthand: full implies --full-reset
+set -euo pipefail
+
+TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${TASK_DIR}/../../.."
+cd "$ROOT_DIR"
+
+FULL_RESET=0
+DATASET_ARG="${DATASET:-rpool/images}"
+MODE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --full-reset) FULL_RESET=1; shift ;;
+    --dataset) DATASET_ARG="$2"; shift 2 ;;
+    full) MODE="full"; shift ;;
+    incremental) MODE="incremental"; shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+if [[ "$MODE" == "full" ]]; then FULL_RESET=1; fi
+
+# 1) Build and stage sysconfig binaries
+mise run build:sysconfig -- --clean
+
+# 2) Build bootstrap (strap)
+if [[ $FULL_RESET -eq 1 ]]; then
+  mise run image:bootstrap -- --reset full
+else
+  mise run image:bootstrap -- --reset none
+fi
+
+# 3) Build cloud image with sysconfig
+RESET_MODE="reset"
+if [[ $FULL_RESET -eq 1 ]]; then RESET_MODE="full"; fi
+mise run image:cloud_sysconfig -- "$RESET_MODE" --dataset "$DATASET_ARG"

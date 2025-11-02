@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Build and stage SysConfig release binaries for image-builder consumption
+# Usage:
+#   mise run build:sysconfig [-- --clean] [-- --features <cargo_features>]
+set -euo pipefail
+
+TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${TASK_DIR}/../../.."
+cd "$ROOT_DIR"
+
+CLEAN=0
+CARGO_FEATURES=""
+
+# Parse optional args passed after `--`
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --clean)
+      CLEAN=1; shift ;;
+    --features)
+      CARGO_FEATURES="$2"; shift 2 ;;
+    *)
+      echo "Unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Ensure Rust toolchain
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo not found in PATH. Run 'mise install' first." >&2
+  exit 1
+fi
+
+STAGING_ROOT="image/staging"
+STAGING_DIR="${STAGING_ROOT}/sysconfig-release"
+BIN_DIR_SYS="${STAGING_DIR}/usr/lib/sysconfig"
+BIN_DIR_PLUGINS="${BIN_DIR_SYS}/plugins"
+
+if [[ $CLEAN -eq 1 ]]; then
+  rm -rf -- "$STAGING_DIR"
+fi
+mkdir -p "$BIN_DIR_SYS" "$BIN_DIR_PLUGINS"
+
+# Helper to copy a built binary into staging with desired filename
+copy_bin(){
+  local src_bin="$1"; shift
+  local dst_path="$1"; shift
+  if [[ ! -f "$src_bin" ]]; then
+    echo "Expected binary not found: $src_bin" >&2
+    exit 1
+  fi
+  install -m 0755 -o root -g root "$src_bin" "$dst_path" 2>/dev/null || install -m 0755 "$src_bin" "$dst_path"
+}
+
+# Build crates (release)
+# Build sysconfig service
+( cd sysconfig && cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} )
+# Build illumos-base plugin (binary likely named illumos-base-plugin)
+( cd sysconfig-plugins && cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} )
+# Build provisioning tool (binary likely named provisioning-plugin)
+( cd sysconfig-provisioning && cargo build --release ${CARGO_FEATURES:+--features "$CARGO_FEATURES"} )
+
+# Determine Cargo target dir to find binaries
+get_target_dir(){
+  local crate_dir="$1"
+  ( cd "$crate_dir" && cargo metadata --format-version=1 --no-deps | awk -F '"' '/"target_directory":/ { print $4; exit }' )
+}
+
+SYS_TDIR=$(get_target_dir sysconfig)
+PLUG_TDIR=$(get_target_dir sysconfig-plugins)
+PROV_TDIR=$(get_target_dir sysconfig-provisioning)
+
+# Map of expected binary names to destination paths inside staging
+SYS_BIN_SRC="${SYS_TDIR}/release/sysconfig"
+PLUG_BIN_SRC="${PLUG_TDIR}/release/illumos-base-plugin"
+PROV_BIN_SRC="${PROV_TDIR}/release/provisioning-plugin"
+
+# Some environments may produce unstripped bins with .exe-like suffixes disabled; just trust names above
+
+copy_bin "$SYS_BIN_SRC"  "${BIN_DIR_SYS}/sysconfig"
+copy_bin "$PLUG_BIN_SRC" "${BIN_DIR_PLUGINS}/illumos-base-plugin"
+copy_bin "$PROV_BIN_SRC" "${BIN_DIR_SYS}/sysconfig-provision"
+
+# Print summary
+cat <<EOF
+Staged SysConfig binaries:
+  - ${BIN_DIR_SYS}/sysconfig
+  - ${BIN_DIR_PLUGINS}/illumos-base-plugin
+  - ${BIN_DIR_SYS}/sysconfig-provision
+
+Use with image-builder via: -E image/staging
+EOF

@@ -3,4 +3,4 @@ image-builder
 /installer-docs/book
 /installer-ui/target/
 /dev-bin/
-build
+/build
