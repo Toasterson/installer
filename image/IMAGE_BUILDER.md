@@ -18,15 +18,17 @@ The scripts here wrap `image-builder` with the correct template root and sane de
 
 2) Install the `image-builder` binary and create the working dataset
 
+Using mise (recommended):
 ```
-cd image
-./setup.sh
+mise run image:setup -- [--dataset <DS>] [--builder-dir <DIR>] [--no-build] [--update]
 ```
 
-`setup.sh` will:
-- Clone `https://github.com/illumos/image-builder` into `~/image-builder` if needed
-- Install the `image-builder` binary into `~/.cargo/bin`
-- Create the root ZFS dataset used by the builder (defaults to `rpool/images`)
+The `image:setup` task will:
+- Clone `https://github.com/illumos/image-builder` into `~/image-builder` (or `--builder-dir`) if needed
+- Build and install the `image-builder` binary into `~/.cargo/bin`
+- Ensure the root ZFS dataset exists (defaults to `${DATASET:-rpool/images}`, override with `--dataset`)
+
+Legacy script `image/setup.sh` is deprecated. Please use the mise task above.
 
 3) Configure (optional)
 
@@ -42,14 +44,14 @@ DATASET=tank/images
 - Build the multi-stage ramdisk and installer content (strap pipeline):
 
 ```
-cd image
-./strap.sh [-f] [-B] [-E]
+# from repo root
+mise run image:bootstrap -- [--reset none|full] [--with-build-tools] [--with-extra]
 ```
 
 Flags:
-- `-f` Full reset (destroys prior work-in-progress datasets for a clean rebuild)
-- `-B` Include software build tools (enables `build` feature)
-- `-E` Enable OmniOS Extra publisher (enables `extra` feature)
+- `--reset full` Full reset (destroys prior work-in-progress datasets for a clean rebuild)
+- `--with-build-tools` Include software build tools (enables `build` feature)
+- `--with-extra` Enable OmniOS Extra publisher (enables `extra` feature)
 
 - Build the boot archive (UFS):
 
@@ -121,14 +123,15 @@ Template JSON describes build steps (creating datasets, unpacking tars, setting 
 
 ## Troubleshooting
 
-- Missing dataset: create it with `pfexec zfs create <DATASET>` or run `./setup.sh`.
+- Missing dataset: create it with `pfexec zfs create <DATASET>` or run `mise run image:setup`.
 - Permission errors: ensure you are using `pfexec` (or an equivalent with the required ZFS and loopback device privileges).
-- `image-builder` not found: confirm `~/.cargo/bin` is in your `PATH` and re-run `./setup.sh`.
+- `image-builder` not found: run `mise run image:setup` to install it, or pass `IMAGE_BUILDER=/absolute/path/to/image-builder`. Tasks also search `~/.cargo/bin/image-builder` automatically.
 - SMF/`svccfg` issues: pass `-S /path/to/svccfg-native` built from your illumos tree if system `svccfg` is incompatible.
 
 ## See also
 
-- Scripts in this directory: `setup.sh`, `strap.sh`, `boot_archive.sh`, `iso.sh`
+- Scripts in this directory: `setup.sh`, `boot_archive.sh`, `iso.sh`
+- Task: use `mise run image:bootstrap` for the strap pipeline
 - Upstream template references (historical inspiration):
   - https://github.com/oxidecomputer/helios-engvm/blob/main/image/templates
   - https://github.com/jclulow/omnios-image-builder/blob/main/templates

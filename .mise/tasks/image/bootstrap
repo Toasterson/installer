@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 # Build bootstrap (strap) artifacts used by the cloud image
 # Usage:
 #   mise run image:bootstrap [-- [--reset none|full] [--with-build-tools] [--with-extra]]
@@ -8,6 +8,10 @@ set -euo pipefail
 TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 ROOT_DIR="${TASK_DIR}/../../.."
 cd "$ROOT_DIR/image"
+
+# Load dataset and defaults (DATASET, etc.)
+# shellcheck disable=SC1091
+source "./lib/common.sh"
 
 RESET="none"
 WITH_BUILD_TOOLS=0
@@ -25,24 +29,54 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ARGS=()
-# Map reset to strap flags (strap.sh supports -f for full reset only)
-if [[ "$RESET" == "full" ]]; then
-  ARGS+=("-f")
-elif [[ "$RESET" != "none" ]]; then
-  echo "Invalid --reset value: $RESET (expected none|full)" >&2
-  exit 2
-fi
+# Common builder args
+BUILDER_ARGS=(
+  -T "$PWD/templates"
+  -d "${DATASET}"
+  -g installer
+  -F name=installer
+)
 
-[[ $WITH_BUILD_TOOLS -eq 1 ]] && ARGS+=("-B")
-[[ $WITH_EXTRA -eq 1 ]] && ARGS+=("-E")
+# Map reset to image-builder flags
+case "$RESET" in
+  none) : ;;
+  full) BUILDER_ARGS+=( -x ) ;;
+  *) echo "Invalid --reset value: $RESET (expected none|full)" >&2; exit 2 ;;
+esac
 
-# Ensure image-builder is available
-if ! command -v image-builder >/dev/null 2>&1; then
-  if [[ -x ./setup.sh ]]; then
-    echo "image-builder not found; attempting ./setup.sh ..."
-    ./setup.sh
+# Feature toggles
+[[ $WITH_BUILD_TOOLS -eq 1 ]] && BUILDER_ARGS+=( -F build )
+[[ $WITH_EXTRA -eq 1 ]] && BUILDER_ARGS+=( -F extra )
+
+# Resolve image-builder path reliably (pfexec may not inherit PATH)
+resolve_image_builder() {
+  if [[ -n "${IMAGE_BUILDER:-}" && -x "${IMAGE_BUILDER}" ]]; then
+    echo "$IMAGE_BUILDER"; return 0;
   fi
+  if command -v image-builder >/dev/null 2>&1; then
+    command -v image-builder; return 0;
+  fi
+  if [[ -x "$HOME/.cargo/bin/image-builder" ]]; then
+    echo "$HOME/.cargo/bin/image-builder"; return 0;
+  fi
+  # Repo-local debug/dev build (common during development)
+  if [[ -x "$ROOT_DIR/image-builder/target/release/image-builder" ]]; then
+    echo "$ROOT_DIR/image-builder/target/release/image-builder"; return 0;
+  fi
+  return 1
+}
+
+if ! BUILDER_BIN=$(resolve_image_builder); then
+  echo "image-builder not found. Run: mise run image:setup" >&2
+  exit 1
 fi
 
-./strap.sh ${ARGS[*]:-}
+# Stages to build (same as legacy strap.sh)
+STAGES=("01-strap" "02-image" "03-archive")
+
+for stage in "${STAGES[@]}"; do
+  pfexec "$BUILDER_BIN" \
+    build \
+    "${BUILDER_ARGS[@]}" \
+    -n "ramdisk-${stage}"
+done

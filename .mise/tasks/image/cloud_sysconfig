@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/usr/bin/env bash
 # @describe Build the cloud image using sysconfig (with staged binaries)
 # @arg reset[none|reset|full] Build reset mode. none (default) | reset (-r) | full (-x)
 # @option --dataset The ZFS dataset root (defaults to env DATASET or rpool/images)
@@ -45,14 +45,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Ensure image-builder binary
-if ! command -v image-builder >/dev/null 2>&1; then
-  if [[ -x image/setup.sh ]]; then
-    echo "image-builder not found; attempting image/setup.sh ..."
-    (cd image && ./setup.sh)
-  fi
-fi
-
 ARGS=( build -d "$DATASET_ARG" -g "$GROUP" -n "$NAME" -T "$TEMPLATES_DIR" -N "$OUTPUT_NAME" -E "$EXTERNAL_SRC" )
 case "$RESET" in
   reset) ARGS+=( -r ) ;;
@@ -61,5 +53,28 @@ case "$RESET" in
   *) echo "Invalid reset: $RESET" >&2; exit 2 ;;
 esac
 
+# Resolve image-builder path reliably (pfexec may not inherit PATH)
+resolve_image_builder() {
+  if [[ -n "${IMAGE_BUILDER:-}" && -x "${IMAGE_BUILDER}" ]]; then
+    echo "$IMAGE_BUILDER"; return 0;
+  fi
+  if command -v image-builder >/dev/null 2>&1; then
+    command -v image-builder; return 0;
+  fi
+  if [[ -x "$HOME/.cargo/bin/image-builder" ]]; then
+    echo "$HOME/.cargo/bin/image-builder"; return 0;
+  fi
+  # Repo-local debug/dev build (common during development)
+  if [[ -x "$ROOT_DIR/image-builder/target/release/image-builder" ]]; then
+    echo "$ROOT_DIR/image-builder/target/release/image-builder"; return 0;
+  fi
+  return 1
+}
+
+if ! BUILDER_BIN=$(resolve_image_builder); then
+  echo "image-builder not found. Run: mise run image:setup" >&2
+  exit 1
+fi
+
 # Run builder (needs pfexec for ZFS)
-pfexec image-builder "${ARGS[@]}"
+pfexec "$BUILDER_BIN" "${ARGS[@]}"

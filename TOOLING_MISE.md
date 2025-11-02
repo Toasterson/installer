@@ -30,6 +30,13 @@ Toolchain defaults are defined in `.mise.toml`:
 
 ## Common tasks
 
+### Initial setup (image-builder and dataset)
+- `mise run image:setup -- [--dataset <DS>] [--builder-dir <DIR>] [--no-build] [--update]`
+  - Clones and builds `image-builder` into `~/.cargo/bin` and ensures the ZFS dataset root exists.
+  - Notes:
+    - Subsequent tasks resolve the `image-builder` binary robustly, preferring `~/.cargo/bin/image-builder` if present.
+    - If not found, tasks will suggest running `mise run image:setup`.
+
 Run any task with `mise run <task>`. Tasks are defined as file tasks under `.mise/tasks/`.
 
 ### VM lifecycle

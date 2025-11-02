@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# @describe Install/prepare image-builder and create the ZFS dataset root
+# @option --dataset ZFS dataset root to create/use (default: env DATASET or rpool/images)
+# @option --builder-dir Directory to clone/build image-builder (default: $HOME/image-builder)
+# @flag --no-build Skip building/installing image-builder (only ensure dataset)
+# @flag --update If builder dir exists, pull latest before building
+set -euo pipefail
+
+# Resolve repo root
+TASK_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+ROOT_DIR="${TASK_DIR}/../../.."
+cd "$ROOT_DIR"
+
+DATASET_ARG="${DATASET:-rpool/images}"
+BUILDER_DIR="${HOME}/image-builder"
+NO_BUILD=0
+DO_UPDATE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dataset)
+      DATASET_ARG="$2"; shift 2 ;;
+    --builder-dir)
+      BUILDER_DIR="$2"; shift 2 ;;
+    --no-build)
+      NO_BUILD=1; shift ;;
+    --update)
+      DO_UPDATE=1; shift ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Ensure Rust/cargo is available unless --no-build
+if [[ $NO_BUILD -eq 0 ]]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo not found in PATH. Install toolchains first: 'mise install' or 'mise run tools:install'" >&2
+    exit 1
+  fi
+fi
+
+# Clone image-builder if missing
+if [[ $NO_BUILD -eq 0 ]]; then
+  if [[ ! -d "$BUILDER_DIR/.git" ]]; then
+    echo "Cloning image-builder into $BUILDER_DIR ..."
+    git clone https://github.com/illumos/image-builder "$BUILDER_DIR"
+  elif [[ $DO_UPDATE -eq 1 ]]; then
+    echo "Updating existing image-builder repo at $BUILDER_DIR ..."
+    git -C "$BUILDER_DIR" pull --ff-only
+  fi
+
+  # Build/install the binary into ~/.cargo/bin (like original setup.sh)
+  echo "Building and installing image-builder to ~/.cargo/bin ..."
+  ( cd "$BUILDER_DIR" && cargo install --path . )
+fi
+
+# Make sure ~/.cargo/bin is on PATH for subsequent tasks, but pfexec won't inherit it, so
+# our other tasks resolve the absolute path explicitly.
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Create the ZFS dataset root if it doesn't exist
+if ! zfs list -H -o name "$DATASET_ARG" >/dev/null 2>&1; then
+  echo "Creating ZFS dataset: $DATASET_ARG (pfexec required)"
+  pfexec zfs create "$DATASET_ARG"
+else
+  echo "ZFS dataset already exists: $DATASET_ARG"
+fi
+
+# Print summary and a quick next step
+cat <<EOF
+image:setup complete
+- image-builder: ${NO_BUILD:+(build skipped)}${NO_BUILD==0:+installed/updated in ~/.cargo/bin}
+- builder repo: $BUILDER_DIR
+- dataset root: $DATASET_ARG
+
+Next:
+  mise run image:bootstrap -- [--reset none|full]
+  mise run image:cloud_sysconfig -- [none|reset|full]
+EOF
