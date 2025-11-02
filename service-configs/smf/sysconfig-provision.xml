@@ -11,7 +11,7 @@
     </dependency>
 
     <dependency name='filesystem' type='service' grouping='require_all' restart_on='none'>
-      <service_fmri value='svc:/system/filesystem/local:default' />
+      <service_fmri value='svc:/system/filesystem/root:default' />
     </dependency>
 
     <!-- Run after loopback but before full network config -->
@@ -19,10 +19,6 @@
       <service_fmri value='svc:/network/loopback:default' />
     </dependency>
 
-    <!-- We want to run before network/physical to potentially configure it -->
-    <dependent name='network-physical' grouping='optional_all' restart_on='none'>
-      <service_fmri value='svc:/network/physical:default' />
-    </dependent>
 
     <!-- If cloud-init is installed, we should run before it -->
     <dependent name='cloud-init-local' grouping='optional_all' restart_on='none'>

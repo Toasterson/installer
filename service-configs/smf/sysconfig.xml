@@ -7,7 +7,7 @@
 
     <!-- Dependencies -->
     <dependency name='filesystem' type='service' grouping='require_all' restart_on='none'>
-      <service_fmri value='svc:/system/filesystem/local:default' />
+      <service_fmri value='svc:/system/filesystem/root:default' />
     </dependency>
 
     <dependency name='loopback' type='service' grouping='require_all' restart_on='none'>

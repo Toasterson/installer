@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# Collect SMF diagnostics related to sysconfig, networking, and filesystem/local
+# Usage:
+#   mise run smf:collect -- [/output/dir]
+# If no output dir is provided, writes to the current directory.
+set -euo pipefail
+
+OUT_DIR="${1:-.}"
+mkdir -p "$OUT_DIR"
+TS=$(date +%Y%m%d-%H%M%S)
+OUT_FILE="${OUT_DIR%/}/smf-diagnostics-${TS}.txt"
+
+log(){ echo "[$(date +%H:%M:%S)] $*"; }
+
+SERVICES=( \
+  'svc:/system/filesystem/local:default' \
+  'svc:/system/filesystem/root:default' \
+  'svc:/system/manifest-import:default' \
+  'svc:/system/sysconfig:default' \
+  'svc:/system/sysconfig/provision:default' \
+  'svc:/system/sysconfig/illumos-base:default' \
+  'svc:/network/loopback:default' \
+  'svc:/network/physical:default' \
+)
+
+LOGS=( \
+  '/var/svc/log/system-filesystem-local:default.log' \
+  '/var/svc/log/system-filesystem-root:default.log' \
+  '/var/svc/log/system-manifest-import:default.log' \
+  '/var/svc/log/system-sysconfig:default.log' \
+  '/var/svc/log/system-sysconfig-provision:default.log' \
+  '/var/svc/log/system-sysconfig-illumos-base:default.log' \
+  '/var/svc/log/network-loopback:default.log' \
+  '/var/svc/log/network-physical:default.log' \
+)
+
+{
+  echo "==== SMF DIAGNOSTIC COLLECTION ($(date)) ===="
+  echo
+  echo "== Host basics =="
+  echo "uname -a:"; uname -a; echo
+  echo "beadm list:"; beadm list 2>/dev/null || true; echo
+
+  echo "== Problem summary (svcs -xv) =="
+  svcs -xv || true
+  echo
+
+  for SVC in "${SERVICES[@]}"; do
+    echo "== Service: ${SVC} =="
+    echo "svcs -H -o STATE,FMRI ${SVC}:"; svcs -H -o STATE,FMRI "${SVC}" || true; echo
+    echo "svcs -xv ${SVC}:"; svcs -xv "${SVC}" || true; echo
+    echo "svcs -d ${SVC}:"; svcs -d "${SVC}" || true; echo
+    echo "svcs -D ${SVC}:"; svcs -D "${SVC}" || true; echo
+    echo "svcs -p ${SVC}:"; svcs -p "${SVC}" || true; echo
+  done
+
+  echo "== Global milestones =="
+  svcs "svc:/milestone/*" || true
+  echo
+
+  echo "== Recent SMF repository events (if available) =="
+  svcadm milestone -n 2>/dev/null || true
+  echo
+
+  echo "== Tail of logs =="
+  for LOG in "${LOGS[@]}"; do
+    if [[ -f "$LOG" ]]; then
+      echo "--- $LOG (last 100 lines) ---"
+      tail -n 100 "$LOG" || true
+      echo
+    fi
+  done
+} >"$OUT_FILE"
+
+log "Wrote diagnostics to: $OUT_FILE"
+echo "$OUT_FILE"
