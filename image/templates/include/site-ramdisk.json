@@ -1,0 +1,12 @@
+{
+  "steps": [
+    {
+      "t": "ensure_file",
+      "file": "/var/svc/profile/site.xml",
+      "src": "files/site-ramdisk.xml",
+      "owner": "root",
+      "group": "root",
+      "mode": "644"
+    }
+  ]
+}

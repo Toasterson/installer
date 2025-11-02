@@ -1,0 +1,43 @@
+<?xml version='1.0' ?>
+<!DOCTYPE service_bundle SYSTEM '/usr/share/lib/xml/dtd/service_bundle.dtd.1'>
+<!--
+  Ramdisk site profile: disable services that cannot/should-not run inside the installer
+  or other ramdisk environments. Apply this only for ramdisk/installer images.
+-->
+<service_bundle type='profile' name='site'>
+  <!-- Keep root-minimal enabled to ensure early root readiness in ramdisk -->
+  <service name='system/filesystem/root-minimal' version='1' type='service'>
+    <instance name='default' enabled='true' />
+  </service>
+
+  <!-- Do not start full root and usr mounts by default in ramdisk -->
+  <service name='system/filesystem/root' version='1' type='service'>
+    <instance name='default' enabled='false' />
+    <instance name='media' enabled='true' />
+    <instance name='net' enabled='false' />
+  </service>
+  <service name='system/filesystem/usr' version='1' type='service'>
+    <instance name='default' enabled='false' />
+    <instance name='media' enabled='true' />
+  </service>
+
+  <!-- Disable services that are not useful or cannot run in a ramdisk -->
+  <service name='system/ipcc' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+  <service name='system/t6init' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+  <service name='network/rpc/bind' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+  <service name='network/routing/route' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+  <service name='system/fmd' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+  <service name='network/sendmail-client' version='1' type='service'>
+    <instance name='default' enabled='false' />
+  </service>
+</service_bundle>
